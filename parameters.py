@@ -15,7 +15,7 @@ and the run name (used for output directory naming).
 import json
 import numpy as np
 from dataclasses import dataclass
-from constants import LOOSE_EPSILON
+from constants import LOOSE_EPSILON, EMISSRAT_YEAR_2020, EMISSRAT_YEAR_SPAN
 
 
 # =============================================================================
@@ -382,6 +382,17 @@ class ScalarParameters:
     # Mu_up cap configuration (DICE-style time-varying μ upper bound)
     use_mu_up: bool = False  # If True, enforce mu_up cap on abatement fraction
     mu_up_schedule: list = None  # List of [year, mu_cap] pairs for user-defined schedule
+    # CO2-equivalent emission ratio (accounts for non-CO2 GHGs like methane)
+    # Uses exponential decline: emission_ratio(t) = emissrat2020 * exp(decay_rate * (t - 2020))
+    # where decay_rate = ln(emissrat2100 / emissrat2020) / 80
+    emissrat2020: float = 1.0  # Ratio of CO2e to industrial CO2 in 2020 (default: 1.0 = no adjustment)
+    emissrat2100: float = 1.0  # Ratio of CO2e to industrial CO2 in 2100 (default: 1.0 = no adjustment)
+    # Extra emission pulse parameters (for sensitivity analysis)
+    year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
+    amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
+    # Extra consumption pulse parameters (for sensitivity analysis)
+    year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
+    amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
 
     def __post_init__(self):
         """Set default for mu_max if not provided."""
@@ -750,6 +761,13 @@ def evaluate_params_at_time(t, config):
         # Lorenz formulation parameters
         'use_empirical_lorenz': sp.use_empirical_lorenz,
     }
+
+    # CO2-equivalent emission ratio (exponential decline from 2020 to 2100)
+    # decay_rate = ln(emissrat2100 / emissrat2020) / 80
+    # emission_ratio(t) = emissrat2020 * exp(decay_rate * (t - 2020))
+    decay_rate = np.log(sp.emissrat2100 / sp.emissrat2020) / EMISSRAT_YEAR_SPAN
+    emission_ratio = sp.emissrat2020 * np.exp(decay_rate * (t - EMISSRAT_YEAR_2020))
+    params['emission_ratio'] = emission_ratio
 
     # Dual control function evaluation returns (f, s) - uses relative time
     f, s = config.control_function(t_relative)

@@ -271,6 +271,7 @@ def calculate_tendencies(state, params,
     y_net_reference = params['y_net_reference']
     psi1 = params['psi1']
     psi2 = params['psi2']
+    emission_ratio = params['emission_ratio']
 
     # Validate Gini coefficient for empirical Lorenz
     if use_empirical_lorenz and gini > EMPIRICAL_LORENZ_BASE_GINI:
@@ -384,6 +385,7 @@ def calculate_tendencies(state, params,
         mu = 0.0
         U = NEG_BIGNUM
         e = 0.0
+        eCO2eq = 0.0
         dK_dt = -delta * K
         omega_yi = np.zeros_like(xi)
         y_net_yi = np.zeros_like(xi)
@@ -758,7 +760,10 @@ def calculate_tendencies(state, params,
 
         # Eq 2.3: Actual emissions per capita (after abatement)
         e = sigma * (1 - mu) * y_gross
-    
+
+        # CO2-equivalent emissions per capita (includes non-CO2 GHGs)
+        eCO2eq = e * emission_ratio
+
         # Eq 1.10: Capital tendency
         dK_dt = s * y_net * L - delta * K
 
@@ -806,13 +811,16 @@ def calculate_tendencies(state, params,
             'dK_dt': dK_dt,
             # Mu_up cap diagnostics
             'mu_max': mu_max,
+            # CO2-equivalent emissions
+            'emission_ratio': emission_ratio,
+            'eCO2eq': eCO2eq,
         })
 
     # Always return minimal variables needed for optimization
     results.update({
         'U': U,
         'dK_dt': dK_dt,
-        'dEcum_dt': e * L,
+        'dEcum_dt': eCO2eq * L,
     })
 
     # Always return climate damage ratios for use in next time step
@@ -958,7 +966,9 @@ def integrate_model(config, store_detailed_output=True):
             'y_net_yi': np.zeros((n_steps, n_quad)),
             'omega_yi': np.zeros((n_steps, n_quad)),
             'utility_yi': np.zeros((n_steps, n_quad)),
-            # Mu_up cap diagnostics
+            # CO2-equivalent emissions
+            'emission_ratio': np.zeros(n_steps),
+            'eCO2eq': np.zeros(n_steps),
         })
 
     # Always store time, state variables, and objective function variables
@@ -1063,7 +1073,9 @@ def integrate_model(config, store_detailed_output=True):
             # Store tendencies
             results['dK_dt'][i] = outputs['dK_dt']
 
-            # Store mu_up cap diagnostics
+            # Store CO2-equivalent emissions
+            results['emission_ratio'][i] = outputs['emission_ratio']
+            results['eCO2eq'][i] = outputs['eCO2eq']
 
         # Euler step: update state for next iteration (skip on last step)
         if i < n_steps - 1:
@@ -1140,6 +1152,7 @@ def create_derived_variables(results):
     lambda_abate = results['lambda_abate']
     abateCost_amount = results['abateCost_amount']
     redistribution_amount = results['redistribution_amount']
+    eCO2eq = results['eCO2eq']
 
     # Compute total (uppercase) variables from per-capita via vectorized multiplication
     Y_gross = y_gross * L
@@ -1147,6 +1160,7 @@ def create_derived_variables(results):
     Y_net = y_net * L
     AbateCost = abateCost_amount * L
     E = e * L
+    ECO2eq = eCO2eq * L
     Climate_damage = climate_damage * L
     Redistribution_amount = redistribution_amount * L
 
@@ -1196,6 +1210,7 @@ def create_derived_variables(results):
         'Y_net': Y_net,
         'AbateCost': AbateCost,
         'E': E,
+        'ECO2eq': ECO2eq,
         'Climate_damage': Climate_damage,
         'Redistribution_amount': Redistribution_amount,
         'Consumption': Consumption,
