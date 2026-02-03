@@ -272,6 +272,14 @@ def calculate_tendencies(state, params,
     psi1 = params['psi1']
     psi2 = params['psi2']
     emission_ratio = params['emission_ratio']
+    year_extra_emission = params['year_extra_emission']
+    amount_extra_emission = params['amount_extra_emission']
+    year_extra_consumption = params['year_extra_consumption']
+    amount_extra_consumption = params['amount_extra_consumption']
+    year_eland0 = params['year_eland0']
+    amount_eland0 = params['amount_eland0']
+    rate_eland0 = params['rate_eland0']
+    dt = params['dt']
 
     # Validate Gini coefficient for empirical Lorenz
     if use_empirical_lorenz and gini > EMPIRICAL_LORENZ_BASE_GINI:
@@ -385,7 +393,9 @@ def calculate_tendencies(state, params,
         mu = 0.0
         U = NEG_BIGNUM
         e = 0.0
-        eCO2eq = 0.0
+        eland = 0.0
+        E_extra = 0.0
+        consumption_extra = 0.0
         dK_dt = -delta * K
         omega_yi = np.zeros_like(xi)
         y_net_yi = np.zeros_like(xi)
@@ -413,7 +423,18 @@ def calculate_tendencies(state, params,
         # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
         # y_net (aggregate): gross production net of climate damage and abatement cost
         # Note: consumption + savings = y_net
-        y_net = (1.0 - lambda_abate) * y_damaged_calc 
+        y_net = (1.0 - lambda_abate) * y_damaged_calc
+
+        # Extra consumption pulse (for sensitivity analysis)
+        if amount_extra_consumption == 0.0:
+            consumption_extra = 0.0
+        elif year_extra_consumption >= t and year_extra_consumption < t + dt:
+            consumption_extra = amount_extra_consumption / (L * dt)
+        else:
+            consumption_extra = 0.0
+        # fractional extra consumption is the extra consumption as a fraction of normal consumption
+        # this is 1.0 unless we are adding a pulse of consumption to numerically calculate a partial derivative
+        fractional_extra_consumption = 1.0 + consumption_extra / (y_net *(1 - s) + EPSILON)
 
         # Find uniform redistribution amount
         if income_redistribution and income_dependent_redistribution_policy:
@@ -565,7 +586,7 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            min_consumption = min_y_net * (1 - s)
+            min_consumption = min_y_net * (1 - s) * fractional_extra_consumption
 
             # Utility at this income level
             if eta == 1:
@@ -574,7 +595,7 @@ def calculate_tendencies(state, params,
                 min_utility = (np.maximum(min_consumption, EPSILON) ** (1 - eta)) / (1 - eta)
 
             # Damage at this income level (for next timestep)
-            omega_Fmin = Omega_base * (min_y_net / y_net_reference) ** (-y_damage_distribution_exponent)
+            omega_Fmin = Omega_base * (min_y_net  / y_net_reference) ** (-y_damage_distribution_exponent)
             omega_Fmin = np.clip(omega_Fmin, 0.0, 1.0 - EPSILON)
 
             # Contribution to aggregate utility (analytical: constant × width)
@@ -600,7 +621,7 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            max_consumption = max_y_net * (1 - s)
+            max_consumption = max_y_net * (1 - s) * fractional_extra_consumption
 
             # Utility at this income level
             if eta == 1:
@@ -637,7 +658,7 @@ def calculate_tendencies(state, params,
             )
 
             # Compute consumption and utility
-            consumption_region2 = y_net_region2 * (1 - s)
+            consumption_region2 = y_net_region2 * (1 - s) * fractional_extra_consumption
             if eta == 1:
                 utility_region2 = np.log(np.maximum(consumption_region2, EPSILON))
             else:
@@ -749,8 +770,14 @@ def calculate_tendencies(state, params,
     # mitigation carbon climate
         t_before_climate = time.time()
 
-        # Eq 2.1: Potential emissions per capita (unabated)
-        epot = sigma * y_gross
+        # Land emissions per capita (exponentially declining from reference year)
+        if amount_eland0 == 0.0:
+            eland = 0.0
+        else:
+            eland = amount_eland0 * np.exp(rate_eland0 * (t - year_eland0)) / L
+
+        # Eq 2.1: Potential emissions per capita (unabated), including land emissions
+        epot = sigma * y_gross * emission_ratio + eland
 
         # Eq 1.6: Abatement fraction (compute uncapped value first)
         if epot > 0 and abateCost_amount > 0:
@@ -758,11 +785,16 @@ def calculate_tendencies(state, params,
         else:
             mu = 0.0
 
-        # Eq 2.3: Actual emissions per capita (after abatement)
-        e = sigma * (1 - mu) * y_gross
+        # Eq 2.3: CO2eq emissions per capita (after abatement) consider non-CO2 gases and land C emissions
+        e = (1 - mu) * epot
 
-        # CO2-equivalent emissions per capita (includes non-CO2 GHGs)
-        eCO2eq = e * emission_ratio
+        # Extra emission pulse (for sensitivity analysis)
+        if amount_extra_emission == 0.0:
+            E_extra = 0.0
+        elif year_extra_emission >= t and year_extra_emission < t + dt:
+            E_extra = amount_extra_emission / dt
+        else:
+            E_extra = 0.0
 
         # Eq 1.10: Capital tendency
         dK_dt = s * y_net * L - delta * K
@@ -811,16 +843,16 @@ def calculate_tendencies(state, params,
             'dK_dt': dK_dt,
             # Mu_up cap diagnostics
             'mu_max': mu_max,
-            # CO2-equivalent emissions
             'emission_ratio': emission_ratio,
-            'eCO2eq': eCO2eq,
+            'E_extra': E_extra,
+            'consumption_extra': consumption_extra,
         })
 
     # Always return minimal variables needed for optimization
     results.update({
         'U': U,
         'dK_dt': dK_dt,
-        'dEcum_dt': eCO2eq * L,
+        'dEcum_dt': e * L + E_extra,
     })
 
     # Always return climate damage ratios for use in next time step
@@ -966,9 +998,9 @@ def integrate_model(config, store_detailed_output=True):
             'y_net_yi': np.zeros((n_steps, n_quad)),
             'omega_yi': np.zeros((n_steps, n_quad)),
             'utility_yi': np.zeros((n_steps, n_quad)),
-            # CO2-equivalent emissions
             'emission_ratio': np.zeros(n_steps),
-            'eCO2eq': np.zeros(n_steps),
+            'E_extra': np.zeros(n_steps),
+            'consumption_extra': np.zeros(n_steps),
         })
 
     # Always store time, state variables, and objective function variables
@@ -1003,6 +1035,9 @@ def integrate_model(config, store_detailed_output=True):
         else:
             # No cap - set mu_max to INVERSE_EPSILON (effectively unlimited)
             params['mu_max'] = INVERSE_EPSILON
+
+        # Pass dt for extra emission pulse timing
+        params['dt'] = dt
 
         if store_detailed_output:
             results['params_list'].append(params)
@@ -1073,9 +1108,9 @@ def integrate_model(config, store_detailed_output=True):
             # Store tendencies
             results['dK_dt'][i] = outputs['dK_dt']
 
-            # Store CO2-equivalent emissions
             results['emission_ratio'][i] = outputs['emission_ratio']
-            results['eCO2eq'][i] = outputs['eCO2eq']
+            results['E_extra'][i] = outputs['E_extra']
+            results['consumption_extra'][i] = outputs['consumption_extra']
 
         # Euler step: update state for next iteration (skip on last step)
         if i < n_steps - 1:
@@ -1152,7 +1187,6 @@ def create_derived_variables(results):
     lambda_abate = results['lambda_abate']
     abateCost_amount = results['abateCost_amount']
     redistribution_amount = results['redistribution_amount']
-    eCO2eq = results['eCO2eq']
 
     # Compute total (uppercase) variables from per-capita via vectorized multiplication
     Y_gross = y_gross * L
@@ -1160,7 +1194,6 @@ def create_derived_variables(results):
     Y_net = y_net * L
     AbateCost = abateCost_amount * L
     E = e * L
-    ECO2eq = eCO2eq * L
     Climate_damage = climate_damage * L
     Redistribution_amount = redistribution_amount * L
 
@@ -1210,7 +1243,6 @@ def create_derived_variables(results):
         'Y_net': Y_net,
         'AbateCost': AbateCost,
         'E': E,
-        'ECO2eq': ECO2eq,
         'Climate_damage': Climate_damage,
         'Redistribution_amount': Redistribution_amount,
         'Consumption': Consumption,

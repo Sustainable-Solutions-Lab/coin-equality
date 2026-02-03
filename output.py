@@ -54,8 +54,6 @@ VARIABLE_METADATA = {
     'tax_amount': {'description': 'Per-Capita Tax Amount', 'units': '$/person', 'group': 'policy'},
     'r_consumption': {'description': 'Effective Discount Rate on Consumption', 'units': '', 'group': 'economic'},
     'emission_ratio': {'description': 'CO2e to CO2 Ratio', 'units': '', 'group': 'climate'},
-    'eCO2eq': {'description': 'Per-Capita CO2e Emissions', 'units': 'tCO2e/person/yr', 'group': 'climate'},
-    'ECO2eq': {'description': 'Total CO2e Emissions', 'units': 'tCO2e/yr', 'group': 'climate'},
 }
 
 # Variable grouping for organized layout with combined charts
@@ -81,7 +79,7 @@ VARIABLE_GROUPS = {
         {'type': 'combined', 'title': 'Redistribution', 'variables': ['redistribution', 'Redistribution_amount'], 'units': '$'}
     ],
     'physical_variables': [
-        {'type': 'combined', 'title': 'Emissions', 'variables': ['E', 'ECO2eq', 'dEcum_dt'], 'units': 'tCO₂/yr'},
+        {'type': 'combined', 'title': 'Emissions', 'variables': ['E', 'dEcum_dt'], 'units': 'tCO₂/yr'},
         {'type': 'single', 'variables': ['emission_ratio']},
         {'type': 'single', 'variables': ['Ecum']},
         {'type': 'single', 'variables': ['delta_T']},
@@ -377,8 +375,8 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'mu',  # Abatement fraction
         'E',  # CO2 emissions
         'emission_ratio',  # CO2e to CO2 ratio
-        'eCO2eq',  # Per-capita CO2e emissions
-        'ECO2eq',  # Total CO2e emissions
+        'E_extra',  # Extra emission pulse
+        'consumption_extra',  # Extra consumption pulse
         'dK_dt',  # Net capital accumulation
         'marginal_abatement_cost',  # Marginal abatement cost (social cost of carbon)
         'r_consumption',  # Effective discount rate on consumption
@@ -441,8 +439,8 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'tax_amount': ('Per-capita tax amount (abatement + redistribution)', '$/person/yr'),
         'r_consumption': ('Effective discount rate on consumption', 'dimensionless'),
         'emission_ratio': ('Ratio of CO2e to industrial CO2', 'dimensionless'),
-        'eCO2eq': ('Per-capita CO2e emissions', 'tCO2e/person/yr'),
-        'ECO2eq': ('Total CO2e emissions', 'tCO2e/yr'),
+        'E_extra': ('Extra emission pulse', 'tCO2/yr'),
+        'consumption_extra': ('Extra consumption pulse', '$/person/yr'),
     }
 
     # Create headers with format: "variable, description, (units)"

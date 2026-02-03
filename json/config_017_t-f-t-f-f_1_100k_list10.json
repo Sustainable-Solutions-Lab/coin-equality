@@ -104,7 +104,13 @@
         "year_extra_consumption": 0.0,
         "_year_extra_consumption": "Year to add extra consumption pulse (0 = disabled)",
         "amount_extra_consumption": 0.0,
-        "_amount_extra_consumption": "Amount of extra consumption ($)"
+        "_amount_extra_consumption": "Amount of extra consumption ($)",
+        "year_eland0": 2015.0,
+        "_year_eland0": "Reference year for land emissions",
+        "amount_eland0": 5000000000.0,
+        "_amount_eland0": "Land emissions at reference year (tCO2/yr)",
+        "rate_eland0": -0.02107,
+        "_rate_eland0": "Decline rate for land emissions (yr^-1, negative for decline)"
     },
     "time_functions": {
         "_description": "Time-dependent exogenous functions",
