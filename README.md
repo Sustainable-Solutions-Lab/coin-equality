@@ -166,7 +166,8 @@ The model combines three subsystems:
 
 2. **Climate Model**
    - Temperature proportional to cumulative emissions
-   - Emissions from economic activity
+   - Industrial emissions from economic activity (scaled by emission_ratio for non-CO2 GHGs)
+   - Exogenous land-use emissions (Eland)
    - Abatement reducing emissions
 
 3. **Utility and Inequality**
@@ -224,10 +225,28 @@ All model parameters are specified in JSON configuration files. See `test_f-f-f-
 
 Key configuration sections:
 - `scalar_parameters` - Time-invariant constants (α, δ, η, ρ, etc.)
-- `time_functions` - Time-dependent functions (A(t), L(t), σ(t), etc.)
+- `time_functions` - Time-dependent functions (A(t), L(t), σ(t), θ₁(t), gini(t), emission_ratio(t), Eland(t), etc.)
 - `control_function` - Allocation policy f(t)
 - `integration_parameters` - Time span and step size
 - `optimization_parameters` - Optimization settings
+
+#### Time Functions
+
+The model uses several time-dependent exogenous functions specified in the `time_functions` section:
+
+| Function | Description | Typical Type |
+|----------|-------------|--------------|
+| `A` | Total factor productivity | gompertz_growth |
+| `L` | Population | gompertz_growth |
+| `sigma` | Carbon intensity of GDP (tCO2/$) | gompertz_growth |
+| `theta1` | Abatement cost coefficient ($/tCO2) | double_exponential_growth |
+| `gini` | Background Gini index | exponential_growth |
+| `emission_ratio` | CO2-equivalent to CO2 ratio (accounts for non-CO2 GHGs) | exponential_growth |
+| `Eland` | Total land emissions (tCO2/yr) | exponential_growth |
+
+**emission_ratio**: Converts industrial CO2 emissions to CO2-equivalent emissions by accounting for non-CO2 greenhouse gases (e.g., methane, N2O). Uses exponential decline from 1.40 in 2020 to 1.21 in 2100 (Barrage & Nordhaus 2023).
+
+**Eland**: Exogenous land-use emissions that decline exponentially over time. At t_base=2020, Eland ≈ 4.5 GtCO2/yr with a decline rate of -2.107%/yr.
 
 ### Policy Switches
 
@@ -453,6 +472,8 @@ coin_equality/
 ├── plot_utility_ratios.py             # Generate utility ratio diagnostic plots
 ├── test_f-f-f-t-t.json                # Example configuration file
 ├── test_f-f-f-t-f.json                # Example configuration file
+├── json/                              # Configuration files for production runs
+│   └── config_017_*.json              # Policy variant configurations
 ├── data/output/                       # Output directory (timestamped subdirs)
 └── coin_equality (methods) v0.1.pdf   # Detailed methods document
 ```
