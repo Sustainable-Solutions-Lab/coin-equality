@@ -81,10 +81,6 @@
             ]
         ],
         "_mu_up_schedule": "List of [year, mu_cap] pairs. Linear interpolation between points; flat extrapolation outside range.",
-        "emissrat2020": 1.4,
-        "_emissrat2020": "Ratio of CO2e to industrial CO2 in 2020 (Barrage-Nordhaus 2023)",
-        "emissrat2100": 1.21,
-        "_emissrat2100": "Ratio of CO2e to industrial CO2 in 2100 (Barrage-Nordhaus 2023)",
         "year_extra_emission": 0.0,
         "_year_extra_emission": "Year to add extra emission pulse (0 = disabled)",
         "amount_extra_emission": 0.0,
@@ -92,13 +88,7 @@
         "year_extra_consumption": 0.0,
         "_year_extra_consumption": "Year to add extra consumption pulse (0 = disabled)",
         "amount_extra_consumption": 0.0,
-        "_amount_extra_consumption": "Amount of extra consumption ($)",
-        "year_eland0": 2015.0,
-        "_year_eland0": "Reference year for land emissions",
-        "amount_eland0": 5000000000.0,
-        "_amount_eland0": "Land emissions at reference year (tCO2/yr)",
-        "rate_eland0": -0.02107,
-        "_rate_eland0": "Decline rate for land emissions (yr^-1, negative for decline)"
+        "_amount_extra_consumption": "Amount of extra consumption ($)"
     },
     "time_functions": {
         "_description": "Time-dependent exogenous functions",
@@ -151,6 +141,24 @@
             "_additive_constant": "Additive constant to represent projected Gini changes over time from SSP2, https://iopscience.iop.org/article/10.1088/1748-9326/acbdb0",
             "growth_rate": -0.01058,
             "_growth_rate": "Growth rate to represent projected Gini changes over time from SSP2, https://iopscience.iop.org/article/10.1088/1748-9326/acbdb0"
+        },
+        "emission_ratio": {
+            "_description": "CO2e to CO2 ratio (exponential decline for non-CO2 gases)",
+            "type": "exponential_growth",
+            "exponential_scaling": 1.4,
+            "_exponential_scaling": "Ratio at t_base=2020 (Barrage-Nordhaus 2023)",
+            "growth_rate": -0.001823,
+            "_growth_rate": "ln(1.21/1.40)/80 - decline rate from 2020 to 2100",
+            "additive_constant": 0.0
+        },
+        "Eland": {
+            "_description": "Total land emissions (tCO2/yr), exponentially declining",
+            "type": "exponential_growth",
+            "exponential_scaling": 4500000000.0,
+            "_exponential_scaling": "Land emissions at t_base=2020: 5e9 * exp(-0.02107 * 5)",
+            "growth_rate": -0.02107,
+            "_growth_rate": "Decline rate for land emissions (yr^-1)",
+            "additive_constant": 0.0
         }
     },
     "integration_parameters": {

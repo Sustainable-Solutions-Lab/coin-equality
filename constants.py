@@ -84,11 +84,4 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
     EMPIRICAL_LORENZ_W3 / (EMPIRICAL_LORENZ_P3 + 1.0)
 )
 
-# CO2-equivalent emission ratio (emissrat) reference years
-# Used for exponential interpolation between 2020 and 2100 values
-# decay_rate = ln(emissrat2100 / emissrat2020) / EMISSRAT_YEAR_SPAN
-# emission_ratio(t) = emissrat2020 * exp(decay_rate * (t - EMISSRAT_YEAR_2020))
-EMISSRAT_YEAR_2020 = 2020.0
-EMISSRAT_YEAR_2100 = 2100.0
-EMISSRAT_YEAR_SPAN = EMISSRAT_YEAR_2100 - EMISSRAT_YEAR_2020  # Years between reference points
 

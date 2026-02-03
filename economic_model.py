@@ -276,9 +276,7 @@ def calculate_tendencies(state, params,
     amount_extra_emission = params['amount_extra_emission']
     year_extra_consumption = params['year_extra_consumption']
     amount_extra_consumption = params['amount_extra_consumption']
-    year_eland0 = params['year_eland0']
-    amount_eland0 = params['amount_eland0']
-    rate_eland0 = params['rate_eland0']
+    Eland = params['Eland']
     dt = params['dt']
 
     # Validate Gini coefficient for empirical Lorenz
@@ -770,11 +768,8 @@ def calculate_tendencies(state, params,
     # mitigation carbon climate
         t_before_climate = time.time()
 
-        # Land emissions per capita (exponentially declining from reference year)
-        if amount_eland0 == 0.0:
-            eland = 0.0
-        else:
-            eland = amount_eland0 * np.exp(rate_eland0 * (t - year_eland0)) / L
+        # Land emissions per capita (Eland is total land emissions from time function)
+        eland = Eland / L
 
         # Eq 2.1: Potential emissions per capita (unabated), including land emissions
         epot = sigma * y_gross * emission_ratio + eland

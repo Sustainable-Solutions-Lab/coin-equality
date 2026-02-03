@@ -15,7 +15,7 @@ and the run name (used for output directory naming).
 import json
 import numpy as np
 from dataclasses import dataclass
-from constants import LOOSE_EPSILON, EMISSRAT_YEAR_2020, EMISSRAT_YEAR_SPAN
+from constants import LOOSE_EPSILON
 
 
 # =============================================================================
@@ -382,21 +382,12 @@ class ScalarParameters:
     # Mu_up cap configuration (DICE-style time-varying μ upper bound)
     use_mu_up: bool = False  # If True, enforce mu_up cap on abatement fraction
     mu_up_schedule: list = None  # List of [year, mu_cap] pairs for user-defined schedule
-    # CO2-equivalent emission ratio (accounts for non-CO2 GHGs like methane)
-    # Uses exponential decline: emission_ratio(t) = emissrat2020 * exp(decay_rate * (t - 2020))
-    # where decay_rate = ln(emissrat2100 / emissrat2020) / 80
-    emissrat2020: float = 1.0  # Ratio of CO2e to industrial CO2 in 2020 (default: 1.0 = no adjustment)
-    emissrat2100: float = 1.0  # Ratio of CO2e to industrial CO2 in 2100 (default: 1.0 = no adjustment)
     # Extra emission pulse parameters (for sensitivity analysis)
     year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
     amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
     # Extra consumption pulse parameters (for sensitivity analysis)
     year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
-    # Land emissions parameters (exponential decline)
-    year_eland0: float = 0.0  # Reference year for land emissions (0 = disabled)
-    amount_eland0: float = 0.0  # Land emissions at reference year (tCO2/yr)
-    rate_eland0: float = 0.0  # Decline rate for land emissions (yr^-1, negative for decline)
 
     def __post_init__(self):
         """Set default for mu_max if not provided."""
@@ -766,23 +757,22 @@ def evaluate_params_at_time(t, config):
         'use_empirical_lorenz': sp.use_empirical_lorenz,
     }
 
-    # CO2-equivalent emission ratio (exponential decline from 2020 to 2100)
-    # decay_rate = ln(emissrat2100 / emissrat2020) / 80
-    # emission_ratio(t) = emissrat2020 * exp(decay_rate * (t - 2020))
-    decay_rate = np.log(sp.emissrat2100 / sp.emissrat2020) / EMISSRAT_YEAR_SPAN
-    emission_ratio = sp.emissrat2020 * np.exp(decay_rate * (t - EMISSRAT_YEAR_2020))
-    params['emission_ratio'] = emission_ratio
+    # Handle optional time functions with defaults for backward compatibility
+    if 'emission_ratio' in tf:
+        params['emission_ratio'] = tf['emission_ratio'](t_relative)
+    else:
+        params['emission_ratio'] = 1.0  # No CO2e adjustment
+
+    if 'Eland' in tf:
+        params['Eland'] = tf['Eland'](t_relative)
+    else:
+        params['Eland'] = 0.0  # No land emissions
 
     # Extra emission/consumption pulse parameters
     params['year_extra_emission'] = sp.year_extra_emission
     params['amount_extra_emission'] = sp.amount_extra_emission
     params['year_extra_consumption'] = sp.year_extra_consumption
     params['amount_extra_consumption'] = sp.amount_extra_consumption
-
-    # Land emissions parameters
-    params['year_eland0'] = sp.year_eland0
-    params['amount_eland0'] = sp.amount_eland0
-    params['rate_eland0'] = sp.rate_eland0
 
     # Dual control function evaluation returns (f, s) - uses relative time
     f, s = config.control_function(t_relative)
