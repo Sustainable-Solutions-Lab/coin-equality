@@ -345,18 +345,17 @@ class ScalarParameters:
         Base year for time-dependent functions. Time functions receive (t - t_base)
         so they can be parameterized for relative time (0 = base year).
         Default: 2020.0
+    mu_max_initial : float
+        Ceiling on abatement fraction μ at t=0. Combined with max_mu_increase_rate,
+        this implements a rate-of-change constraint on μ.
+        Default: INVERSE_EPSILON (unconstrained)
+    max_mu_increase_rate : float
+        Maximum annual increase in μ (absolute, not relative).
+        Default: INVERSE_EPSILON (unconstrained)
     use_mu_up : bool
-        If True, enforce time-varying upper bound on abatement fraction μ.
-        Default: False (no cap, backward compatible)
-    mu_up_schedule : list of [year, mu_cap] pairs
-        User-defined schedule for μ upper bound. Each entry is [year, mu_cap].
-        Linear interpolation between points; flat extrapolation outside range.
-        Example: [[2020, 0.05], [2025, 0.10], [2060, 0.9], [2070, 1.0]]
-        Required when use_mu_up is True.
-        How to allocate slack budget when cap binds:
-        - "consumption": slack goes to consumption (default)
-        - "redistribution": slack added to redistribution transfers
-        - "unallocated": slack removed from economy
+        DEPRECATED/IGNORED. Kept so existing JSON configs load without error.
+    mu_up_schedule : list
+        DEPRECATED/IGNORED. Kept so existing JSON configs load without error.
     """
     alpha: float
     delta: float
@@ -379,9 +378,12 @@ class ScalarParameters:
     t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
     mu_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     Ecum_initial: float = 0.0  # Default to zero (no prior emissions)
-    # Mu_up cap configuration (DICE-style time-varying μ upper bound)
-    use_mu_up: bool = False  # If True, enforce mu_up cap on abatement fraction
-    mu_up_schedule: list = None  # List of [year, mu_cap] pairs for user-defined schedule
+    # Rate-of-change constraint on μ
+    mu_max_initial: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
+    max_mu_increase_rate: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
+    # Deprecated fields (kept so existing JSON configs load without error)
+    use_mu_up: bool = False
+    mu_up_schedule: list = None
     # Extra emission pulse parameters (for sensitivity analysis)
     year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
     amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
@@ -390,10 +392,14 @@ class ScalarParameters:
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
 
     def __post_init__(self):
-        """Set default for mu_max if not provided."""
+        """Set defaults for mu_max and max_mu_increase_rate if not provided."""
         from constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
+        if self.mu_max_initial is None:
+            object.__setattr__(self, 'mu_max_initial', INVERSE_EPSILON)
+        if self.max_mu_increase_rate is None:
+            object.__setattr__(self, 'max_mu_increase_rate', INVERSE_EPSILON)
 
 
 @dataclass

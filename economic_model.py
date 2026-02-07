@@ -21,8 +21,6 @@ from distribution_utilities import (
 )
 from parameters import evaluate_params_at_time
 from constants import EPSILON, LOOSE_EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
-from mu_up import get_mu_up_from_schedule, invert_abatement_cost
-from mu_up import print_mu_up_schedule
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
     """
@@ -846,6 +844,7 @@ def calculate_tendencies(state, params,
     # Always return minimal variables needed for optimization
     results.update({
         'U': U,
+        'mu': mu,
         'dK_dt': dK_dt,
         'dEcum_dt': e * L + E_extra,
     })
@@ -922,7 +921,7 @@ def integrate_model(config, store_detailed_output=True):
     dt = config.integration_params.dt
     n_quad = config.integration_params.n_quad
 
-    # Extract scalar params for mu_up configuration
+    # Extract scalar params for mu rate-of-change constraint
     sp = config.scalar_params
 
     # Create time array
@@ -1018,18 +1017,16 @@ def integrate_model(config, store_detailed_output=True):
             'Fi_edges': (xi_edges + 1.0) / 2.0,
         })
 
+    # Initialize mu ceiling for rate-of-change constraint
+    mu_ceiling = sp.mu_max_initial
+
     # Time stepping loop
     for i, t in enumerate(t_array):
         # Evaluate time-dependent parameters at current time
         params = evaluate_params_at_time(t, config)
 
-        # Set mu_max based on use_mu_up flag
-        if sp.use_mu_up:
-            # Interpolate mu_max from user-defined schedule
-            params['mu_max'] = get_mu_up_from_schedule(t, sp.mu_up_schedule)
-        else:
-            # No cap - set mu_max to INVERSE_EPSILON (effectively unlimited)
-            params['mu_max'] = INVERSE_EPSILON
+        # Rate-of-change constraint on μ: ceiling starts at mu_max_initial, grows by max_mu_increase_rate per year
+        params['mu_max'] = mu_ceiling
 
         # Pass dt for extra emission pulse timing
         params['dt'] = dt
@@ -1045,6 +1042,9 @@ def integrate_model(config, store_detailed_output=True):
                                       Fmin_prev, Fmax_prev,
                                       Omega_Omega_base_ratio_prev,
                                       xi, xi_edges, wi, store_detailed_output)
+
+        # Update mu ceiling for next timestep: grows from actual mu by max_mu_increase_rate
+        mu_ceiling = outputs['mu'] + sp.max_mu_increase_rate * dt
 
         # Always store variables needed for objective function
         results['U'][i] = outputs['U']
