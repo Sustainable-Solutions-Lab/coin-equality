@@ -421,17 +421,6 @@ def calculate_tendencies(state, params,
         # Note: consumption + savings = y_net
         y_net = (1.0 - lambda_abate) * y_damaged_calc
 
-        # Extra consumption pulse (for sensitivity analysis)
-        if amount_extra_consumption == 0.0:
-            consumption_extra = 0.0
-        elif year_extra_consumption >= t and year_extra_consumption < t + dt:
-            consumption_extra = amount_extra_consumption / (L * dt)
-        else:
-            consumption_extra = 0.0
-        # fractional extra consumption is the extra consumption as a fraction of normal consumption
-        # this is 1.0 unless we are adding a pulse of consumption to numerically calculate a partial derivative
-        fractional_extra_consumption = 1.0 + consumption_extra / (y_net *(1 - s) + EPSILON)
-
         # Find uniform redistribution amount
         if income_redistribution and income_dependent_redistribution_policy:
             # No uniform distribution
@@ -582,7 +571,7 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            min_consumption = min_y_net * (1 - s) * fractional_extra_consumption
+            min_consumption = min_y_net * (1 - s)
 
             # Utility at this income level
             if eta == 1:
@@ -617,7 +606,7 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            max_consumption = max_y_net * (1 - s) * fractional_extra_consumption
+            max_consumption = max_y_net * (1 - s)
 
             # Utility at this income level
             if eta == 1:
@@ -654,7 +643,7 @@ def calculate_tendencies(state, params,
             )
 
             # Compute consumption and utility
-            consumption_region2 = y_net_region2 * (1 - s) * fractional_extra_consumption
+            consumption_region2 = y_net_region2 * (1 - s) 
             if eta == 1:
                 utility_region2 = np.log(np.maximum(consumption_region2, EPSILON))
             else:
@@ -792,8 +781,25 @@ def calculate_tendencies(state, params,
         # Eq 1.10: Capital tendency
         dK_dt = s * y_net * L - delta * K
 
+        # Extra consumption pulse (for sensitivity analysis)
+        if amount_extra_consumption == 0.0:
+            consumption_extra = 0.0
+            pulse_utility_scaling = 1.0
+        elif year_extra_consumption >= t and year_extra_consumption < t + dt:
+            consumption_extra = amount_extra_consumption / (L * dt)
+            fractional_extra_consumption = 1.0 + consumption_extra / (y_net *(1 - s) + EPSILON)
+            pulse_utility_scaling = fractional_extra_consumption ** (1 - eta) if eta != 1 else L * np.log(fractional_extra_consumption)
+        else:
+            consumption_extra = 0.0
+            pulse_utility_scaling = 1.0
+        # fractional extra consumption is the extra consumption as a fraction of normal consumption
+        # this is 1.0 unless we are adding a pulse of consumption to numerically calculate a partial derivative
+        
+
+
         # aggregate utility
-        U = aggregate_utility
+        U = aggregate_utility * pulse_utility_scaling 
+        # pulse utility scaling is the adjustment to utility from the extra consumption pulse (if any)
 
         _timing_stats['climate_time'] += time.time() - t_before_climate
 
