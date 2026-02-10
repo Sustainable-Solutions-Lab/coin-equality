@@ -87,12 +87,12 @@
         "_max_mu_increase_rate": "Maximum annual increase in mu (2.3 pp/year)",
         "year_extra_emission": 0.0,
         "_year_extra_emission": "Year to add extra emission pulse (0 = disabled)",
-        "amount_extra_emission": 1000000000.0,
-        "_amount_extra_emission": "Default emission pulse for SCC calculation (1 GtCO2)",
+        "amount_extra_emission": 1e6,
+        "_amount_extra_emission": "Default emission pulse for SCC calculation (1 MtCO2)",
         "year_extra_consumption": 0.0,
         "_year_extra_consumption": "Year to add extra consumption pulse (0 = disabled)",
-        "amount_extra_consumption": 1000000000.0,
-        "_amount_extra_consumption": "Default consumption pulse for SCC calculation ($1B)"
+        "amount_extra_consumption": 1e6,
+        "_amount_extra_consumption": "Default consumption pulse for SCC calculation ($1M)"
     },
     "time_functions": {
         "_description": "Time-dependent exogenous functions",
