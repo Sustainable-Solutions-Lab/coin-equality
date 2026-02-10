@@ -217,7 +217,7 @@ def run_scenario(config):
 
     t_start = config.integration_params.t_start
     discount_factors = np.exp(-rho * (t - t_start))
-    integrand = discount_factors * U * L
+    integrand = discount_factors * U
 
     objective = np.trapezoid(integrand, t)
 
