@@ -298,7 +298,7 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
     list of dict
         Results for each scaling factor
     """
-    scaling_factors = [0.1, 0.3, 1.0, 3.0]
+    scaling_factors = [0.001, 1.0, 1000]
 
     print("\n" + "=" * 80)
     print("PULSE-SIZE SENSITIVITY TEST")
