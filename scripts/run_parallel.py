@@ -134,7 +134,7 @@ def launch_optimization(config_file, overrides):
     subprocess.Popen
         Process handle for the launched job
     """
-    cmd = ['python', 'run_optimization.py', str(config_file)] + overrides
+    cmd = ['python', 'scripts/run_optimization.py', str(config_file)] + overrides
 
     # Launch process in background
     # stdout and stderr are handled by run_optimization.py itself (saved to terminal_output.txt)
