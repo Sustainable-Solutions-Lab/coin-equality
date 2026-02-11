@@ -16,22 +16,22 @@ SCENARIOS = [
     {
         'switches': 'f-f-f-f-f',
         'label': 'Baseline',
-        'color': '#1f77b4',
-    },
-    {
-        'switches': 't-f-f-f-f',
-        'label': 'Income-dep. damage',
-        'color': '#d62728',
+        'color': '#1f77b4',  # blue
     },
     {
         'switches': 'f-f-t-f-f',
         'label': 'Progressive tax',
-        'color': '#2ca02c',
+        'color': '#ff7f0e',  # orange
+    },
+    {
+        'switches': 't-f-f-f-f',
+        'label': 'Income-dep. damage',
+        'color': '#2ca02c',  # green
     },
     {
         'switches': 't-f-t-f-f',
         'label': 'Both',
-        'color': '#ff7f0e',
+        'color': '#d62728',  # red
     },
 ]
 

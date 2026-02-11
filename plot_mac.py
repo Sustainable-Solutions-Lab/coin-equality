@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Plot marginal abatement cost for the 4 scenarios (mu_up=2.3, rate limit).
+Plot marginal abatement cost for the 4 scenarios (unconstrained, mu_up=false).
 Also overlay the SCC values from the perturbation method for comparison.
 
+At optimality without rate constraints, MAC should equal SCC.
 SCC values are read from scc_results.csv in each scenario directory.
 """
 
@@ -16,26 +17,26 @@ SCENARIOS = [
     {
         'switches': 'f-f-f-f-f',
         'label': 'Baseline',
-        'color': '#1f77b4',
-        'dir': 'data/output/config_020_f-f-f-f-f_1_100k_mu_up_2.3_20260206-161048',
-    },
-    {
-        'switches': 't-f-f-f-f',
-        'label': 'Income-dep. damage',
-        'color': '#d62728',
-        'dir': 'data/output/config_020_t-f-f-f-f_1_100k_mu_up_2.3_20260206-161049',
+        'color': '#1f77b4',  # blue
+        'dir': 'data/output/config_020_f-f-f-f-f_1_100k_mu_up_false_20260206-120309',
     },
     {
         'switches': 'f-f-t-f-f',
         'label': 'Progressive tax',
-        'color': '#2ca02c',
-        'dir': 'data/output/config_020_f-f-t-f-f_1_100k_mu_up_2.3_20260206-161050',
+        'color': '#ff7f0e',  # orange
+        'dir': 'data/output/config_020_f-f-t-f-f_1_100k_mu_up_false_20260206-120311',
+    },
+    {
+        'switches': 't-f-f-f-f',
+        'label': 'Income-dep. damage',
+        'color': '#2ca02c',  # green
+        'dir': 'data/output/config_020_t-f-f-f-f_1_100k_mu_up_false_20260206-120310',
     },
     {
         'switches': 't-f-t-f-f',
         'label': 'Both',
-        'color': '#ff7f0e',
-        'dir': 'data/output/config_020_t-f-t-f-f_1_100k_mu_up_2.3_20260206-161051',
+        'color': '#d62728',  # red
+        'dir': 'data/output/config_020_t-f-t-f-f_1_100k_mu_up_false_20260206-120312',
     },
 ]
 
@@ -170,11 +171,11 @@ def main():
         if y_lo > 0 and y_lo < 0.5 * y_hi:
             ax.set_ylim(0, y_hi)
 
-    fig.suptitle('Abatement diagnostics (mu_up=2.3, rate limit 2.3 pp/yr, $\\eta$=1.45, $\\rho$=0.01)',
+    fig.suptitle('Abatement diagnostics (unconstrained, $\\eta$=1.45, $\\rho$=0.01)',
                  fontsize=13, y=0.98)
     fig.tight_layout()
 
-    output_path = 'data/output/mac_diagnostics_mu_up_2.3.pdf'
+    output_path = 'data/output/mac_diagnostics_unconstrained.pdf'
     fig.savefig(output_path, bbox_inches='tight')
     print(f"Plot saved to: {output_path}")
 
