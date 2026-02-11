@@ -113,6 +113,27 @@ Example comparing specific runs:
 python compare_results.py data/output/config_011_f-f-f-f-f_25_1_100k_el_* data/output/config_011_t-f-t-f-f_25_1_100k_el_*
 ```
 
+### Calculating Social Cost of Carbon
+
+Use `calculate_scc.py` to compute the Social Cost of Carbon (SCC) from optimization results using the perturbation method:
+
+```bash
+python calculate_scc.py --baseline data/output/config_019_..._YYYYMMDD-HHMMSS/ --pulse-year 2025
+```
+
+This script:
+1. Loads optimized control trajectories (f and s) from a baseline optimization run
+2. Runs three integrations: baseline, +emission pulse, +consumption pulse
+3. Computes SCC from welfare differences using the formula: SCC = -m_E / m_C
+
+The SCC represents the marginal welfare cost of emitting one additional tonne of CO2, expressed in dollars. See [README_DETAIL.md](README_DETAIL.md#social-cost-of-carbon-scc-estimation) for the detailed methodology.
+
+**Options:**
+- `--pulse-year`: Year to apply perturbation pulses
+- `--emission-amount`: Emission pulse size in tCO2 (default: from config)
+- `--consumption-amount`: Consumption pulse size in $ (default: from config)
+- `--sensitivity-test`: Run pulse-size and time-shift invariance tests
+
 ### Analyzing Optimization Convergence
 
 Use `compare_optimization_convergence.py` to analyze how well different optimization runs have converged:
@@ -465,6 +486,7 @@ coin_equality/
 ├── run_integration.py                 # Run forward integration from optimization results
 ├── run_parallel.py                    # Launch multiple optimizations in parallel
 ├── compare_results.py                 # Compare multiple optimization runs
+├── calculate_scc.py                   # Calculate Social Cost of Carbon from optimization results
 ├── compare_optimization_convergence.py # Analyze optimization convergence
 ├── comparison_utils.py                # Multi-run comparison utilities
 ├── visualization_utils.py             # Unified visualization functions

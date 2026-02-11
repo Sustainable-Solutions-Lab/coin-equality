@@ -32,6 +32,15 @@ This document provides complete technical documentation for the COIN_equality mo
   - [Implementation Notes](#implementation-notes)
   - [Performance Optimizations](#performance-optimizations)
   - [Output Variables](#output-variables)
+- [Social Cost of Carbon (SCC) Estimation](#social-cost-of-carbon-scc-estimation)
+  - [Methodology](#methodology)
+  - [Numerical Implementation](#numerical-implementation)
+  - [Configuration Parameters](#configuration-parameters)
+  - [Pulse-Size Sensitivity](#pulse-size-sensitivity)
+  - [Welfare Numeraire and Distributional Effects](#welfare-numeraire-and-distributional-effects)
+  - [Usage Example](#usage-example)
+  - [Output](#output)
+  - [Interpretation](#interpretation)
 - [Output and Visualization](#output-and-visualization)
   - [Saving Results](#saving-results)
   - [Output Files](#output-files)
@@ -600,6 +609,15 @@ Utility and inequality parameters:
 | `Gini_fract` | Fraction of effective Gini change as instantaneous step (0 = no step, 1 = full step) | - | `Gini_fract` |
 | `Gini_restore` | Rate at which delta_Gini restores to zero (0 = no restoration) | yr⁻¹ | `Gini_restore` |
 | `f_gdp` | Fraction of income available for redistribution (<1: active redistribution; >=1: redistribution disabled, pure abatement mode) | - | `fract_gdp` |
+
+SCC estimation parameters (used by `calculate_scc.py`):
+
+| Parameter | Description | Units | JSON Key |
+|-----------|-------------|-------|----------|
+| `year_extra_emission` | Calendar year for SCC emission pulse | yr | `year_extra_emission` |
+| `amount_extra_emission` | SCC emission pulse magnitude | tCO₂ | `amount_extra_emission` |
+| `year_extra_consumption` | Calendar year for SCC consumption pulse | yr | `year_extra_consumption` |
+| `amount_extra_consumption` | SCC consumption pulse magnitude | $ | `amount_extra_consumption` |
 
 ### Time-Dependent Functions
 
@@ -1340,6 +1358,151 @@ The results dictionary contains arrays for:
 These diagnostics help track how redistribution and climate policies affect inequality across different variables. The Gini coefficients are computed from the discretized distributions at Gauss-Legendre quadrature points using the Lorenz curve integral: Gini = 2 ∫₀¹ (F - L(F)) dF. The utility Gini is only calculated when η < 1, since utility can have negative values when η ≥ 1.
 
 All arrays have the same length corresponding to time points from `t_start` to `t_end` in steps of `dt`.
+
+## Social Cost of Carbon (SCC) Estimation
+
+The model computes the Social Cost of Carbon using a **perturbation method** that evaluates the welfare impact of marginal emissions relative to the welfare impact of marginal consumption. This approach is implemented in `calculate_scc.py` and uses parameters defined in the economic model.
+
+### Methodology
+
+The Social Cost of Carbon is defined as the marginal welfare cost of emitting one additional tonne of CO2, expressed in consumption-equivalent dollars:
+
+```
+SCC(t) = - (∂W/∂E) / (∂W/∂C)
+```
+
+where:
+- W is the discounted welfare integral: W = ∫₀^∞ e^(-ρt) · U(t) · L(t) dt
+- E is cumulative CO2 emissions (tCO2)
+- C is aggregate consumption ($)
+- ρ is the pure rate of time preference
+
+### Numerical Implementation
+
+The marginal welfare derivatives are computed using finite difference perturbations:
+
+**Step 1: Baseline Integration**
+
+Run the model with optimized control trajectories (f, s) from a previous optimization, with no perturbation pulses:
+```
+W_baseline = ∫₀^∞ e^(-ρt) · U_baseline(t) · L(t) dt
+```
+
+**Step 2: Emission Pulse**
+
+Add a discrete emission pulse at the specified pulse year:
+```
+E_extra(t) = amount_extra_emission / dt,    if year_extra_emission ≤ t < year_extra_emission + dt
+           = 0,                              otherwise
+```
+
+This pulse is added directly to cumulative emissions (dEcum/dt), bypassing abatement. The welfare with the emission pulse is:
+```
+W_emission = ∫₀^∞ e^(-ρt) · U_emission(t) · L(t) dt
+```
+
+**Step 3: Consumption Pulse**
+
+Add a discrete consumption pulse at the specified pulse year by reducing taxes:
+```
+tax_reduction_per_capita = amount_extra_consumption / (L(t) · dt)
+```
+
+This reduction is applied to the tax amount during the pulse timestep, effectively increasing disposable income and consumption. The welfare with the consumption pulse is:
+```
+W_consumption = ∫₀^∞ e^(-ρt) · U_consumption(t) · L(t) dt
+```
+
+**Step 4: Compute SCC**
+
+Calculate the marginal welfare impacts and SCC:
+```
+ΔW_emission    = W_emission - W_baseline        (should be negative: emissions cause damage)
+ΔW_consumption = W_consumption - W_baseline     (should be positive: consumption provides utility)
+
+m_E = ΔW_emission / amount_extra_emission       (welfare per tCO2)
+m_C = ΔW_consumption / amount_extra_consumption (welfare per $)
+
+SCC = -m_E / m_C                                ($/tCO2)
+```
+
+### Configuration Parameters
+
+The SCC calculation uses four scalar parameters defined in the configuration:
+
+| Parameter | Description | Units | JSON Key |
+|-----------|-------------|-------|----------|
+| `year_extra_emission` | Calendar year for emission pulse | yr | `year_extra_emission` |
+| `amount_extra_emission` | Emission pulse magnitude | tCO2 | `amount_extra_emission` |
+| `year_extra_consumption` | Calendar year for consumption pulse | yr | `year_extra_consumption` |
+| `amount_extra_consumption` | Consumption pulse magnitude | $ | `amount_extra_consumption` |
+
+**Typical values:**
+- `amount_extra_emission`: 1e9 tCO2 (1 GtCO2) - large enough for numerical precision, small enough for linear regime
+- `amount_extra_consumption`: 1e12 $ ($1 trillion) - calibrated to produce similar welfare perturbation magnitude
+
+### Pulse-Size Sensitivity
+
+The SCC calculation assumes linear (marginal) behavior. The `--sensitivity-test` flag runs validation tests:
+
+**Pulse-size sensitivity test:**
+- Runs calculations at 0.001x, 1x, and 1000x the base pulse sizes
+- Verifies that SCC is approximately constant across pulse sizes
+- Maximum deviation < 3% indicates the linear regime is satisfied
+
+**Time-shift invariance test:**
+- Computes SCC at multiple pulse years (2025, 2030, 2050, 2075, 2100)
+- Shows how SCC evolves over time
+- Large discontinuities may indicate numerical issues
+
+### Welfare Numeraire and Distributional Effects
+
+The consumption pulse implementation treats dollars as **consumption-proportional**: reducing taxes by a fixed dollar amount per capita effectively scales everyone's consumption by the same additive factor. This numeraire choice has distributional implications:
+
+- Under **uniform taxation**: The consumption pulse affects all income groups proportionally to their tax burden
+- Under **progressive taxation**: The consumption pulse primarily benefits high-income earners who pay the taxes
+
+The welfare impact depends on the marginal utility of consumption at each income level. With CRRA utility (u = c^(1-η)/(1-η)), the marginal utility-weighted benefit per dollar depends on the income distribution and tax incidence.
+
+For comparison with the **welfare-adjusted MAC** (marginal abatement cost), see the `welfare_adjusted_mac` variable in `create_derived_variables()`, which accounts for the distributional incidence of abatement costs.
+
+### Usage Example
+
+```bash
+# Basic SCC calculation
+python calculate_scc.py \
+    --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
+    --pulse-year 2025
+
+# With sensitivity tests
+python calculate_scc.py \
+    --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
+    --pulse-year 2025 \
+    --sensitivity-test
+
+# Override pulse amounts
+python calculate_scc.py \
+    --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
+    --pulse-year 2025 \
+    --emission-amount 1e10 \
+    --consumption-amount 1e13
+```
+
+### Output
+
+The script produces:
+- Console output with welfare values, sanity checks, and SCC result
+- `scc_results.csv` in the baseline directory (or custom path with `--output`)
+- Optional sensitivity test tables showing pulse-size dependence and time evolution
+
+### Interpretation
+
+The SCC represents the present value of future climate damages from emitting one additional tonne of CO2 today, expressed in terms of consumption dollars. Key considerations:
+
+1. **Sign convention**: SCC should be positive (emissions cause welfare loss)
+2. **Discount rate dependence**: Higher ρ yields lower SCC (future damages discounted more)
+3. **Inequality aversion**: Higher η can affect SCC through differential welfare weights on consumption
+4. **Policy context**: SCC with progressive taxation may differ from SCC with uniform taxation due to distributional effects
 
 ## Output and Visualization
 
