@@ -379,6 +379,10 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'consumption_extra',  # Extra consumption pulse
         'dK_dt',  # Net capital accumulation
         'marginal_abatement_cost',  # Marginal abatement cost (social cost of carbon)
+        'welfare_adjusted_mac',  # Welfare-adjusted MAC (should match SCC at unconstrained optimum)
+        'mac_over_wmac',  # Ratio of raw MAC to welfare-adjusted MAC
+        'mu_dollar_numeraire',  # MU per $ for consumption-proportional numeraire
+        'mu_dollar_cost',  # MU per $ for abatement cost incidence
         'r_consumption',  # Effective discount rate on consumption
     ]
 
@@ -418,6 +422,10 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         's': ('Savings rate', 'dimensionless'),
         'f': ('Control: fraction allocated to abatement vs redistribution', 'dimensionless'),
         'marginal_abatement_cost': ('Marginal abatement cost (social cost of carbon)', '$/tCO2'),
+        'welfare_adjusted_mac': ('Welfare-adjusted MAC (should match SCC at unconstrained optimum)', '$/tCO2'),
+        'mac_over_wmac': ('Ratio of raw MAC to welfare-adjusted MAC', 'dimensionless'),
+        'mu_dollar_numeraire': ('MU per $ for consumption-proportional numeraire', '1/$'),
+        'mu_dollar_cost': ('MU per $ for abatement cost incidence', '1/$'),
         'Y_gross': ('Gross production before climate damage', '$/yr'),
         'y_net': ('Effective per-capita income after abatement', '$/person/yr'),
         'Lambda': ('Abatement cost as fraction of damaged output', 'dimensionless'),

@@ -1207,6 +1207,68 @@ def create_derived_variables(results):
     # Compute marginal abatement cost
     marginal_abatement_cost = theta1_array * (mu ** (theta2_array - 1.0))
 
+    # ---------- Welfare-adjusted MAC (wMAC) for SCC consistency ----------
+    # SCC "$ pulse" in calculate_tendencies scales everyone's consumption by the same factor,
+    # which corresponds to a consumption-proportional dollar numeraire.
+    # We compute MU per $ for that numeraire, and MU per $ for abatement cost incidence.
+
+    wi = results['wi']
+    Fmin = results['Fmin']
+    Fmax = results['Fmax']
+    min_y_net = results['min_y_net']
+    max_y_net = results['max_y_net']
+    y_net_yi = results['y_net_yi']
+
+    income_dep_tax = np.array([p['income_dependent_tax_policy'] for p in params_list], dtype=bool)
+
+    # Per-capita consumption by region
+    c_min = np.maximum((1.0 - s_array) * min_y_net, EPSILON)          # shape (n_steps,)
+    c_max = np.maximum((1.0 - s_array) * max_y_net, EPSILON)          # shape (n_steps,)
+    c_region2 = np.maximum((1.0 - s_array)[:, None] * y_net_yi, EPSILON)  # shape (n_steps, n_quad)
+
+    # Remap Gauss-Legendre weights to [Fmin, Fmax] each timestep:
+    # Fwi_region2 = wi * (Fmax - Fmin) / 2
+    interval = np.clip(Fmax - Fmin, 0.0, 1.0)
+    Fwi_region2 = wi[None, :] * interval[:, None] / 2.0
+
+    # Total consumption per capita: C = integral c(F) dF
+    C = (
+        Fmin * c_min +
+        np.sum(Fwi_region2 * c_region2, axis=1) +
+        (1.0 - Fmax) * c_max
+    )
+    C = np.maximum(C, EPSILON)
+
+    # MU per $ for consumption-proportional dollar numeraire:
+    # mu_dollar = (integral u'(c)*c dF) / (integral c dF) = (integral c^(1-eta) dF) / C
+    N = (
+        Fmin * (c_min ** (1.0 - eta_array)) +
+        np.sum(Fwi_region2 * (c_region2 ** (1.0 - eta_array[:, None])), axis=1) +
+        (1.0 - Fmax) * (c_max ** (1.0 - eta_array))
+    )
+    mu_dollar_numeraire = N / C
+
+    # MU per $ for abatement cost incidence:
+    # Increasing abatement cost by $1 per capita reduces income by $1, which splits into:
+    #   (1-s) less consumption  +  s less savings (capital accumulation)
+    # Under progressive tax, the consumption reduction falls on the rich (u'(c_max)),
+    # while the savings reduction affects future welfare via capital — the same channel
+    # as the consumption-proportional numeraire. Hence:
+    #   mu_dollar_cost = (1-s) * c_max^(-eta) + s * mu_dollar_numeraire
+    # Under uniform tax, the cost incidence matches the numeraire, so mu_dollar_cost = mu_dollar_numeraire.
+    mu_dollar_cost = np.where(
+        income_dep_tax & ((1.0 - Fmax) > 1e-12),
+        (1.0 - s_array) * c_max ** (-eta_array) + s_array * mu_dollar_numeraire,
+        mu_dollar_numeraire
+    )
+
+    # Welfare-adjusted MAC: this is what should match SCC at an unconstrained interior optimum
+    welfare_adjusted_mac = marginal_abatement_cost * (mu_dollar_cost / mu_dollar_numeraire)
+
+    # Diagnostic ratio (should be ~3-4x in progressive tax runs)
+    mac_over_wmac = marginal_abatement_cost / np.maximum(welfare_adjusted_mac, EPSILON)
+    # --------------------------------------------------------------------
+
     # Create aliases
     Lambda = lambda_abate
     redistribution = redistribution_amount
@@ -1251,6 +1313,10 @@ def create_derived_variables(results):
         'Savings': Savings,
         'savings': savings,
         'marginal_abatement_cost': marginal_abatement_cost,
+        'mu_dollar_numeraire': mu_dollar_numeraire,
+        'mu_dollar_cost': mu_dollar_cost,
+        'welfare_adjusted_mac': welfare_adjusted_mac,
+        'mac_over_wmac': mac_over_wmac,
         'Lambda': Lambda,
         'redistribution': redistribution,
         'dEcum_dt': dEcum_dt,
