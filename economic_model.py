@@ -416,6 +416,13 @@ def calculate_tendencies(state, params,
         tax_amount = abateCost_amount + redistribution_amount # per capita
         # tax amount can be less than amount available if redistribution is turned off.
 
+        #========= for determination of SCC =================
+        # Extra consumption pulse (for sensitivity analysis)
+        if year_extra_consumption >= t and year_extra_consumption < t + dt:
+            tax_reduction_per_capita = amount_extra_consumption / (L * dt)
+            # note: possible perverse result in a zero tax situation
+            tax_amount = max(0.0, tax_amount - tax_reduction_per_capita)
+
         # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
         # y_net (aggregate): gross production net of climate damage and abatement cost
         # Note: consumption + savings = y_net
@@ -779,26 +786,11 @@ def calculate_tendencies(state, params,
             E_extra = 0.0
 
         # Eq 1.10: Capital tendency
-        dK_dt = s * y_net * L - delta * K
-
-        # Extra consumption pulse (for sensitivity analysis)
-        if amount_extra_consumption == 0.0:
-            consumption_extra = 0.0
-            pulse_utility_scaling = 1.0
-        elif year_extra_consumption >= t and year_extra_consumption < t + dt:
-            consumption_extra = amount_extra_consumption / (L * dt)
-            fractional_extra_consumption = 1.0 + consumption_extra / (y_net *(1 - s) + EPSILON)
-            pulse_utility_scaling = fractional_extra_consumption ** (1 - eta) if eta != 1 else L * np.log(fractional_extra_consumption)
-        else:
-            consumption_extra = 0.0
-            pulse_utility_scaling = 1.0
-        # fractional extra consumption is the extra consumption as a fraction of normal consumption
-        # this is 1.0 unless we are adding a pulse of consumption to numerically calculate a partial derivative
-        
+        dK_dt = s * y_net * L - delta * K      
 
 
         # aggregate utility
-        U = aggregate_utility * pulse_utility_scaling 
+        U = aggregate_utility 
         # pulse utility scaling is the adjustment to utility from the extra consumption pulse (if any)
 
         _timing_stats['climate_time'] += time.time() - t_before_climate
