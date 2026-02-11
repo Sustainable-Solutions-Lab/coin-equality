@@ -12,12 +12,16 @@ Outputs:
 
 import csv
 import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-from calculate_scc import load_baseline, create_fixed_control_function, create_config_with_pulse
-from parameters import load_configuration
-from economic_model import integrate_model, create_derived_variables
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scripts.calculate_scc import load_baseline, create_fixed_control_function, create_config_with_pulse
+from src.parameters import load_configuration
+from src.economic_model import integrate_model, create_derived_variables
 
 SCENARIOS = [
     {

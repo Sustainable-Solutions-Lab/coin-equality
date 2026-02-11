@@ -8,8 +8,13 @@ Runs a short optimization and verifies that:
 """
 
 import sys
-from parameters import load_configuration
-from optimization import UtilityOptimizer
+import os
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration
+from src.optimization import UtilityOptimizer
 
 # Use a fast configuration
 config_file = 'json/config_010_f-f-f-f-f_5_1_320_el.json'
@@ -43,7 +48,7 @@ print("TIMING VERIFICATION")
 print("="*80)
 
 # Import the timing stats and print them
-from economic_model import _timing_stats as stats, print_timing_stats
+from src.economic_model import _timing_stats as stats, print_timing_stats
 
 # Force print timing stats regardless of call count
 print(f"\nForcing timing stats print (call count: {stats['call_count']})")

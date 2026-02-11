@@ -71,7 +71,7 @@ Required packages include:
 Test the model with an example configuration:
 
 ```bash
-python test_integration.py test_f-f-f-t-t.json
+python scripts/test_integration.py test_f-f-f-t-t.json
 ```
 
 This will:
@@ -85,7 +85,7 @@ This will:
 Optimize the allocation between redistribution and abatement:
 
 ```bash
-python run_optimization.py test_f-f-f-t-t.json
+python scripts/run_optimization.py test_f-f-f-t-t.json
 ```
 
 This will find the optimal time trajectory of the control variable f(t) (fraction allocated to abatement vs. redistribution) that maximizes the discounted time-integral of aggregate utility.
@@ -99,7 +99,7 @@ This section covers tools for post-processing and analyzing optimization results
 Use `compare_results.py` to compare results across multiple optimization runs:
 
 ```bash
-python compare_results.py "data/output/scenario_*/"
+python scripts/compare_results.py "data/output/scenario_*/"
 ```
 
 The script accepts directory paths or glob patterns and generates:
@@ -110,7 +110,7 @@ The script accepts directory paths or glob patterns and generates:
 
 Example comparing specific runs:
 ```bash
-python compare_results.py data/output/config_011_f-f-f-f-f_25_1_100k_el_* data/output/config_011_t-f-t-f-f_25_1_100k_el_*
+python scripts/compare_results.py data/output/config_011_f-f-f-f-f_25_1_100k_el_* data/output/config_011_t-f-t-f-f_25_1_100k_el_*
 ```
 
 ### Calculating Social Cost of Carbon
@@ -118,7 +118,7 @@ python compare_results.py data/output/config_011_f-f-f-f-f_25_1_100k_el_* data/o
 Use `calculate_scc.py` to compute the Social Cost of Carbon (SCC) from optimization results using the perturbation method:
 
 ```bash
-python calculate_scc.py --baseline data/output/config_019_..._YYYYMMDD-HHMMSS/ --pulse-year 2025
+python scripts/calculate_scc.py --baseline data/output/config_019_..._YYYYMMDD-HHMMSS/ --pulse-year 2025
 ```
 
 This script:
@@ -139,7 +139,7 @@ The SCC represents the marginal welfare cost of emitting one additional tonne of
 Use `compare_optimization_convergence.py` to analyze how well different optimization runs have converged:
 
 ```bash
-python compare_optimization_convergence.py
+python scripts/compare_optimization_convergence.py
 ```
 
 This script:
@@ -379,7 +379,7 @@ Each run creates a timestamped directory:
 Launch multiple optimizations simultaneously:
 
 ```bash
-python run_parallel.py "config_*.json"
+python scripts/run_parallel.py "config_*.json"
 ```
 
 Each optimization runs on its own CPU core, with progress logged to `terminal_output.txt` in each output directory.
@@ -387,7 +387,7 @@ Each optimization runs on its own CPU core, with progress logged to `terminal_ou
 To override parameters for every launched job, append `--key value` pairs exactly as you would for `run_optimization.py`; dot notation targets nested fields (e.g., `--optimization_params.max_evaluations 100`). Example:
 
 ```bash
-python run_parallel.py "config_*.json" --optimization_params.max_evaluations 100 --run_name quick_test
+python scripts/run_parallel.py "config_*.json" --optimization_params.max_evaluations 100 --run_name quick_test
 ```
 
 ### Utility Ratio Plots (damage vs. taxation)
@@ -400,15 +400,15 @@ This creates a timestamped folder under `data/output/` containing a PDF plus opt
 
 - PDF only:
    ```bash
-   python plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json
+   python scripts/plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json
    ```
 - PDF + CSV export for both panels:
    ```bash
-   python plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json --csv
+   python scripts/plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json --csv
    ```
 - PDF + CSV + XLSX export for both panels (requires pandas):
    ```bash
-   python plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json --csv --xlsx
+   python scripts/plot_utility_ratios.py json/config_008_f-t-f-f-f_10_1_1000.json --csv --xlsx
    ```
 
 Notes:
@@ -428,7 +428,7 @@ The model includes test scripts to verify that different policy flag combination
 Test all 16 variants of the *-f-*-*-* flag pattern (fixing `income_dependent_aggregate_damage` to false):
 
 ```bash
-python test_all_flag_variants.py data/output/config_010_f-f-f-f-f_10_0.02_1000_el_20260106-070053
+python scripts/test_all_flag_variants.py data/output/config_010_f-f-f-f-f_10_0.02_1000_el_20260106-070053
 ```
 
 This script:
@@ -474,30 +474,33 @@ coin_equality/
 ├── README_DETAIL.md                   # Detailed technical documentation
 ├── CLAUDE.md                          # AI coding style guide
 ├── requirements.txt                   # Python dependencies
-├── constants.py                       # Numerical constants and tolerances
-├── distribution_utilities.py          # Income distribution and utility integration
-├── economic_model.py                  # Economic production and tendencies
-├── mu_up.py                           # Abatement cap schedule interpolation
-├── parameters.py                      # Parameter definitions and configuration
-├── optimization.py                    # Optimization framework
-├── output.py                          # Output generation (CSV and PDF)
-├── test_integration.py                # Test script for forward integration
-├── run_optimization.py                # Main optimization script
-├── run_integration.py                 # Run forward integration from optimization results
-├── run_parallel.py                    # Launch multiple optimizations in parallel
-├── compare_results.py                 # Compare multiple optimization runs
-├── calculate_scc.py                   # Calculate Social Cost of Carbon from optimization results
-├── compare_optimization_convergence.py # Analyze optimization convergence
-├── comparison_utils.py                # Multi-run comparison utilities
-├── visualization_utils.py             # Unified visualization functions
-├── test_all_flag_variants.py          # Test policy flag independence
-├── plot_utility_ratios.py             # Generate utility ratio diagnostic plots
+├── src/                               # Core library modules
+│   ├── __init__.py                    # Package marker
+│   ├── constants.py                   # Numerical constants and tolerances
+│   ├── parameters.py                  # Parameter definitions and configuration
+│   ├── distribution_utilities.py      # Income distribution and utility integration
+│   ├── economic_model.py              # Economic production and tendencies
+│   ├── optimization.py                # Optimization framework
+│   ├── output.py                      # Output generation (CSV and PDF)
+│   ├── visualization_utils.py         # Unified visualization functions
+│   └── comparison_utils.py            # Multi-run comparison utilities
+├── scripts/                           # Command-line entry points
+│   ├── run_optimization.py            # Main optimization script
+│   ├── run_integration.py             # Run forward integration from optimization results
+│   ├── run_parallel.py                # Launch multiple optimizations in parallel
+│   ├── calculate_scc.py               # Calculate Social Cost of Carbon
+│   ├── compare_results.py             # Compare multiple optimization runs
+│   ├── compare_optimization_convergence.py # Analyze optimization convergence
+│   ├── test_integration.py            # Test script for forward integration
+│   ├── test_all_flag_variants.py      # Test policy flag independence
+│   ├── plot_*.py                      # Various plotting scripts
+│   └── ...                            # Other utility scripts
+├── json/                              # Configuration files for production runs
+│   └── config_*.json                  # Policy variant configurations
+├── data/output/                       # Output directory (timestamped subdirs)
 ├── test_f-f-f-t-t.json                # Example configuration file
 ├── test_f-f-f-t-f.json                # Example configuration file
-├── json/                              # Configuration files for production runs
-│   └── config_017_*.json              # Policy variant configurations
-├── data/output/                       # Output directory (timestamped subdirs)
-└── coin_equality (methods) v0.1.pdf   # Detailed methods document
+└── barrage_nordhaus_2023/             # Reference materials (protected)
 ```
 
 ## Documentation

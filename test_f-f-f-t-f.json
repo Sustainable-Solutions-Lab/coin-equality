@@ -123,8 +123,6 @@
         "_optimization_iterations": "INTEGER: Number of refinement iterations. With 3 iterations and initial=5000, final=30000: iter1=5000, iter2=12247, iter3=30000",
         "optimize_time_points": false,
         "_optimize_time_points": "If true, run an additional optimization at the end to adjust time placement of control points (uses max_evaluations_time_points)",
-        "chebyshev_scaling_power": 1.5,
-        "_chebyshev_scaling_power": "Power for Chebyshev node transformation (>1 concentrates points near start, <1 near end, =1 standard). Default 1.5 concentrates points in early years.",
         "n_points_initial_f": 5,
         "_n_points_initial_f": "number of f control points in first iteration. Refinement base = (n_points_final_f - 1)^(1/(n_iterations - 1)). Omit to use default base=2.0",
         "n_points_final_f": 10,

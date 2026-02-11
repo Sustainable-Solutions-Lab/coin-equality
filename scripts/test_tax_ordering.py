@@ -1,6 +1,11 @@
+import os
+import sys
 import numpy as np
 
-from distribution_utilities import (
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.distribution_utilities import (
     y_net_of_F,
     find_Fmin,
     L_pareto_derivative,

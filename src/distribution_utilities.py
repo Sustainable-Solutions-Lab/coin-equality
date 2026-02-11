@@ -12,7 +12,7 @@ This module provides:
 import math
 import numpy as np
 from scipy.optimize import root_scalar, fsolve, newton
-from constants import (
+from src.constants import (
     EPSILON,
     LOOSE_EPSILON,
     MAX_ITERATIONS,
@@ -335,7 +335,7 @@ def y_net_of_F(F, Fmin, Fmax, y_gross,
         F = F.reshape(1)
 
     # FAST PATH: When previous timestep covered full [0,1] range, use direct xi interpolation
-    from constants import EPSILON
+    from src.constants import EPSILON
     if abs(Fmin_prev) < EPSILON and abs(Fmax_prev - 1.0) < EPSILON:
         # Previous grid was [0,1] → F maps directly to xi via: xi = 2*F - 1
         xi_vals = 2.0 * F - 1.0

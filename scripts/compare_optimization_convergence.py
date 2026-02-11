@@ -18,11 +18,15 @@ Examples:
 """
 
 import sys
+import os
 import argparse
 import glob
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import re
 
 def extract_config_info(directory_name):
@@ -72,7 +76,7 @@ def parse_optimal_objective(output_dir):
 
     Returns the optimal objective value as a float, or None if not found.
     """
-    from constants import OBJECTIVE_SCALE
+    from src.constants import OBJECTIVE_SCALE
 
     terminal_output_path = Path(output_dir) / 'terminal_output.txt'
 

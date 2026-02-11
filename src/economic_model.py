@@ -8,7 +8,7 @@ and emissions abatement costs.
 import numpy as np
 import time
 from scipy.special import roots_legendre
-from distribution_utilities import (
+from src.distribution_utilities import (
     y_net_of_F,
     find_Fmax,
     find_Fmin,
@@ -19,8 +19,8 @@ from distribution_utilities import (
     stepwise_interpolate,
     stepwise_integrate
 )
-from parameters import evaluate_params_at_time
-from constants import EPSILON, LOOSE_EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
+from src.parameters import evaluate_params_at_time
+from src.constants import EPSILON, LOOSE_EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
     """
@@ -419,9 +419,11 @@ def calculate_tendencies(state, params,
         #========= for determination of SCC =================
         # Extra consumption pulse (for sensitivity analysis)
         if year_extra_consumption >= t and year_extra_consumption < t + dt:
-            tax_reduction_per_capita = amount_extra_consumption / (L * dt)
+            consumption_extra = amount_extra_consumption / (L * dt)
             # note: possible perverse result in a zero tax situation
-            tax_amount = max(0.0, tax_amount - tax_reduction_per_capita)
+            tax_amount = max(0.0, tax_amount - consumption_extra)
+        else:
+            consumption_extra = 0.0
 
         # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
         # y_net (aggregate): gross production net of climate damage and abatement cost

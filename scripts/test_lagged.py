@@ -3,10 +3,16 @@
 Quick test of lagged damage implementation.
 """
 
+import os
+import sys
 import json
 from pathlib import Path
-from parameters import load_configuration
-from economic_model import integrate_model
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration
+from src.economic_model import integrate_model
 
 # Load a simple configuration
 config_path = Path("config_COIN-equality_003_tt-t-tt_0.02_fast10+t_320.json")

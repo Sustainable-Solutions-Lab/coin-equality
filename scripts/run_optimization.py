@@ -10,6 +10,10 @@ This script runs the complete optimization workflow:
 
 import sys
 import os
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import json
 import argparse
@@ -20,11 +24,11 @@ import matplotlib.pyplot as plt
 from pathlib import Path
 from io import StringIO
 from matplotlib.backends.backend_pdf import PdfPages
-from parameters import load_configuration, ModelConfiguration
-from optimization import UtilityOptimizer, create_control_function_from_points
-from economic_model import integrate_model, create_derived_variables
-from output import save_results, write_optimization_summary, copy_config_file, create_output_directory
-from visualization_utils import create_results_report_pdf
+from src.parameters import load_configuration, ModelConfiguration
+from src.optimization import UtilityOptimizer, create_control_function_from_points
+from src.economic_model import integrate_model, create_derived_variables
+from src.output import save_results, write_optimization_summary, copy_config_file, create_output_directory
+from src.visualization_utils import create_results_report_pdf
 
 
 class TeeOutput:
@@ -576,7 +580,7 @@ def main():
     # Check if we optimized both f and s
     if 's_control_points' in opt_results and opt_results['s_control_points'] is not None:
         # Both f and s were optimized
-        from optimization import create_f_and_s_control_function_from_points
+        from src.optimization import create_f_and_s_control_function_from_points
         control_func = create_f_and_s_control_function_from_points(
             opt_results['control_points'],
             opt_results['s_control_points']
@@ -589,7 +593,7 @@ def main():
         else:
             # Use s from base control function
             s_time_function = lambda t: config.control_function(t)[1]
-        from parameters import create_f_and_s_control_from_single
+        from src.parameters import create_f_and_s_control_from_single
         control_func = create_f_and_s_control_from_single(f_control, s_time_function)
 
     optimal_config = ModelConfiguration(

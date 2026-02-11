@@ -10,9 +10,9 @@ import nlopt
 import sys
 import time
 from scipy.interpolate import PchipInterpolator
-from economic_model import integrate_model
-from parameters import ModelConfiguration
-from constants import EPSILON
+from src.economic_model import integrate_model
+from src.parameters import ModelConfiguration
+from src.constants import EPSILON
 
 
 def requires_gradient(algorithm_name):
@@ -462,7 +462,7 @@ class UtilityOptimizer:
                 # Use the s control function from the base config
                 base_s_func = lambda t: self.base_config.control_function(t)[1]
                 s_time_function = base_s_func
-            from parameters import create_f_and_s_control_from_single
+            from src.parameters import create_f_and_s_control_from_single
             control_function = create_f_and_s_control_from_single(f_control, s_time_function)
 
         config = ModelConfiguration(
@@ -614,7 +614,7 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from constants import LOOSER_EPSILON, OBJECTIVE_SCALE
+                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
                 eps = LOOSER_EPSILON
                 for i in range(len(x)):
                     x_pert = x.copy()
@@ -630,7 +630,7 @@ class UtilityOptimizer:
                 grad[:] = grad * OBJECTIVE_SCALE
 
             # Return scaled objective
-            from constants import OBJECTIVE_SCALE
+            from src.constants import OBJECTIVE_SCALE
             return obj_value * OBJECTIVE_SCALE
 
         # Get bounds from config, default to [0.0, 1.0]
@@ -776,7 +776,7 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from constants import LOOSER_EPSILON, OBJECTIVE_SCALE
+                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
                 eps = LOOSER_EPSILON
                 for i in range(len(x)):
                     x_pert = x.copy()
@@ -812,7 +812,7 @@ class UtilityOptimizer:
                 grad[:] = grad * OBJECTIVE_SCALE
 
             # Return scaled objective
-            from constants import OBJECTIVE_SCALE
+            from src.constants import OBJECTIVE_SCALE
             return obj_value * OBJECTIVE_SCALE
 
         # Get bounds from config, default to [0.0, 1.0]
@@ -1106,7 +1106,7 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from constants import LOOSER_EPSILON, OBJECTIVE_SCALE
+                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
                 eps = LOOSER_EPSILON
                 for i in range(len(x)):
                     x_pert = x.copy()
@@ -1122,7 +1122,7 @@ class UtilityOptimizer:
                 grad[:] = grad * OBJECTIVE_SCALE
 
             # Return scaled objective
-            from constants import OBJECTIVE_SCALE
+            from src.constants import OBJECTIVE_SCALE
             return obj_value * OBJECTIVE_SCALE
 
         nlopt_algorithm = getattr(nlopt, algorithm)
@@ -1488,7 +1488,7 @@ class UtilityOptimizer:
             total_evaluations += opt_result['n_evaluations']
 
             # Unscale objective for display (it was scaled by OBJECTIVE_SCALE in the wrapper)
-            from constants import OBJECTIVE_SCALE
+            from src.constants import OBJECTIVE_SCALE
             unscaled_objective = opt_result['optimal_objective'] / OBJECTIVE_SCALE
 
             print(f"\nIteration {iteration} complete:")
@@ -1544,7 +1544,7 @@ class UtilityOptimizer:
             total_evaluations += time_opt_result['n_evaluations']
 
             # Unscale objective for display
-            from constants import OBJECTIVE_SCALE
+            from src.constants import OBJECTIVE_SCALE
             unscaled_objective = time_opt_result['optimal_objective'] / OBJECTIVE_SCALE
 
             print(f"\nTime adjustment complete:")

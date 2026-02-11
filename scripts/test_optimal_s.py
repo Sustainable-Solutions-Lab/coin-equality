@@ -5,9 +5,15 @@ Since dual optimization methods aren't fully implemented yet, we test
 the infrastructure by evaluating different s(t) trajectories.
 """
 
+import os
+import sys
 import numpy as np
-from parameters import load_configuration
-from optimization import UtilityOptimizer
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration
+from src.optimization import UtilityOptimizer
 
 def test_optimal_s_economic_sensibility():
     """

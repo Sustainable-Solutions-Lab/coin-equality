@@ -6,8 +6,14 @@ Shows the number of decision points, their locations, and max evaluations
 for each iteration.
 """
 
+import os
+import sys
 import numpy as np
-from optimization import calculate_control_times
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.optimization import calculate_control_times
 
 
 def main():

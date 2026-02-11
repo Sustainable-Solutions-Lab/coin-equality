@@ -20,15 +20,19 @@ Example:
 
 import sys
 import os
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import json
 import argparse
 import tempfile
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from parameters import load_configuration, ModelConfiguration
-from economic_model import integrate_model, create_derived_variables
-from output import save_results
+from src.parameters import load_configuration, ModelConfiguration
+from src.economic_model import integrate_model, create_derived_variables
+from src.output import save_results
 from scipy.interpolate import PchipInterpolator
 
 

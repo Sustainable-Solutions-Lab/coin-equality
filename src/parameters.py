@@ -15,7 +15,7 @@ and the run name (used for output directory naming).
 import json
 import numpy as np
 from dataclasses import dataclass
-from constants import LOOSE_EPSILON
+from src.constants import LOOSE_EPSILON
 
 
 # =============================================================================
@@ -393,7 +393,7 @@ class ScalarParameters:
 
     def __post_init__(self):
         """Set defaults for mu_max and max_mu_increase_rate if not provided."""
-        from constants import INVERSE_EPSILON
+        from src.constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
         if self.mu_max_initial is None:

@@ -4,14 +4,19 @@ Plot SCC comparison: mu_up=false vs mu_up=2.3 for all 4 scenarios.
 Computes missing SCC values at multiple pulse years, then plots.
 """
 
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-from calculate_scc import (
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scripts.calculate_scc import (
     load_baseline, create_fixed_control_function, create_config_with_pulse,
     run_scenario, compute_scc
 )
-from parameters import load_configuration
+from src.parameters import load_configuration
 
 # Scenarios to compare
 SCENARIOS = [

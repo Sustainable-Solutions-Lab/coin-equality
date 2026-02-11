@@ -35,8 +35,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-from parameters import load_configuration
-from economic_model import integrate_model, create_derived_variables
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration
+from src.economic_model import integrate_model, create_derived_variables
 
 
 # =============================================================================

@@ -5,10 +5,16 @@ Visualize the distribution of control points across iterations.
 Shows how points are distributed from 5 to 24 points over the 400-year time range.
 """
 
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from optimization import calculate_control_times
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.optimization import calculate_control_times
 
 
 # Configuration

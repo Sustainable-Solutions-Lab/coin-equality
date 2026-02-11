@@ -12,9 +12,13 @@ Arguments:
 
 import sys
 import os
-from parameters import load_configuration
-from economic_model import integrate_model, create_derived_variables
-from output import save_results
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration
+from src.economic_model import integrate_model, create_derived_variables
+from src.output import save_results
 
 def main():
     # Get config file from command line (required)

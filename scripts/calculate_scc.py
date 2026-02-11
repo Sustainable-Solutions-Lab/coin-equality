@@ -17,12 +17,16 @@ See SCC_IMPLEMENTATION_PLAN.md for detailed documentation.
 
 import argparse
 import os
+import sys
 import csv
 import numpy as np
 from scipy.interpolate import PchipInterpolator
 
-from economic_model import integrate_model
-from parameters import load_configuration
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.economic_model import integrate_model
+from src.parameters import load_configuration
 
 
 def load_baseline(baseline_path):

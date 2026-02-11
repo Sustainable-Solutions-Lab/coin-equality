@@ -22,6 +22,8 @@ Notes:
 
 import argparse
 import csv
+import os
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -30,14 +32,17 @@ from scipy.optimize import root_scalar
 from pathlib import Path
 from datetime import datetime
 
-from parameters import load_configuration, evaluate_params_at_time
-from distribution_utilities import (
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.parameters import load_configuration, evaluate_params_at_time
+from src.distribution_utilities import (
     L_empirical_lorenz_derivative,
     L_pareto_derivative,
     L_empirical_lorenz,
     L_pareto,
 )
-from constants import EPSILON, LOOSE_EPSILON, EMPIRICAL_LORENZ_BASE_GINI
+from src.constants import EPSILON, LOOSE_EPSILON, EMPIRICAL_LORENZ_BASE_GINI
 
 DELTA_T_REPRESENTATIVE = 2.0
 

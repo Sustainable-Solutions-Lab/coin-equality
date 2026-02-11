@@ -294,7 +294,7 @@ The model uses climate damage from the previous timestep to avoid circular depen
 - As `ΔT → 0`: `Ω_base → 0` and `Ω → 0` (no damage)
 
 **Implementation:**
-The damage integrals are computed using Gauss-Legendre quadrature (N_QUAD = 32 points) with analytical Lorenz curve integration and stepwise functions from `distribution_utilities.py`. The model uses damage ratios from the previous timestep, scaled by the current Omega_base, eliminating the need for iterative convergence. The critical ranks Fmin and Fmax are found using `find_Fmin()` and `find_Fmax()`, which employ root finding with closed-form Lorenz integrals.
+The damage integrals are computed using Gauss-Legendre quadrature (N_QUAD = 32 points) with analytical Lorenz curve integration and stepwise functions from `src/distribution_utilities.py`. The model uses damage ratios from the previous timestep, scaled by the current Omega_base, eliminating the need for iterative convergence. The critical ranks Fmin and Fmax are found using `find_Fmin()` and `find_Fmax()`, which employ root finding with closed-form Lorenz integrals.
 
 **Eq. (1.3) - Damaged Production:**
 ```
@@ -465,7 +465,7 @@ The model uses a lagged damage approach for explicit (non-iterative) calculation
    - Computed via root-finding to match budget constraints
 
 3. **Abatement Budget Mechanics**:
-   - Available budget: `redistribution = y * delta_L` (Line 136 of `economic_model.py`)
+   - Available budget: `redistribution = y * delta_L` (Line 136 of `src/economic_model.py`)
    - With `delta_L >= 1`, this creates `redistribution >= y` (budget at least equals full per-capita income)
    - Abatement expenditure: `AbateCost = f * redistribution * L` (Line 142)
    - Effective income: `y_net = y - AbateCost/L = y - f * redistribution`
@@ -486,9 +486,9 @@ The model uses a lagged damage approach for explicit (non-iterative) calculation
    - Climate damage treated as uniform across income levels (first-order approximation)
 
 **Implementation Status**:
-- ✓ Redistribution disabled in `economic_model.py` when income_redistribution = False
+- ✓ Redistribution disabled in `src/economic_model.py` when income_redistribution = False
 - ✓ Uniform damage when y_damage_distribution_exponent → 0 (power-law → 1)
-- ✓ Uses `INVERSE_EPSILON` constant from `constants.py` (no hardcoded values)
+- ✓ Uses `INVERSE_EPSILON` constant from `src/constants.py` (no hardcoded values)
 - ✓ All existing unit tests pass
 
 #### 5. Gini Index Dynamics and Persistence
@@ -610,7 +610,7 @@ Utility and inequality parameters:
 | `Gini_restore` | Rate at which delta_Gini restores to zero (0 = no restoration) | yr⁻¹ | `Gini_restore` |
 | `f_gdp` | Fraction of income available for redistribution (<1: active redistribution; >=1: redistribution disabled, pure abatement mode) | - | `fract_gdp` |
 
-SCC estimation parameters (used by `calculate_scc.py`):
+SCC estimation parameters (used by `scripts/calculate_scc.py`):
 
 | Parameter | Description | Units | JSON Key |
 |-----------|-------------|-------|----------|
@@ -687,7 +687,7 @@ To maintain analytical tractability:
 
 ## Implementation: Key Functions
 
-The `distribution_utilities.py` module provides the core mathematical functions for calculating income distribution, utility integration, and stepwise interpolation over quadrature intervals.
+The `src/distribution_utilities.py` module provides the core mathematical functions for calculating income distribution, utility integration, and stepwise interpolation over quadrature intervals.
 
 ### Basic Conversion Functions
 
@@ -751,7 +751,7 @@ U_segment = crra_utility_interval(F0, F1, c_mean, eta)
 
 ## Parameter Organization
 
-The model uses JSON configuration files to specify all parameters. Configuration is loaded via `load_configuration(config_path)` in `parameters.py`.
+The model uses JSON configuration files to specify all parameters. Configuration is loaded via `load_configuration(config_path)` in `src/parameters.py`.
 
 ### Configuration File Structure
 
@@ -866,14 +866,14 @@ The `evaluate_params_at_time(t, config)` helper combines all parameters into a d
 
 The project includes a comprehensive test script to verify the forward model integration and demonstrate the complete workflow from configuration loading through output generation.
 
-**Important**: When testing the forward model with `test_integration.py`, the control variables (f and s) remain **constant** at their initial guess values for the entire simulation. This is not an optimization—it simply runs the model forward in time with fixed control policies to verify model behavior.
+**Important**: When testing the forward model with `scripts/test_integration.py`, the control variables (f and s) remain **constant** at their initial guess values for the entire simulation. This is not an optimization—it simply runs the model forward in time with fixed control policies to verify model behavior.
 
 #### Quick Start
 
 To test the model with an example configuration:
 
 ```bash
-python test_integration.py test_f-f-f-t-t.json
+python scripts/test_integration.py test_f-f-f-t-t.json
 ```
 
 This command will:
@@ -888,19 +888,19 @@ This command will:
 The test script requires a configuration file argument:
 
 ```bash
-python test_integration.py <config_file>
+python scripts/test_integration.py <config_file>
 ```
 
 **Examples:**
 ```bash
 # Test with example configuration
-python test_integration.py test_f-f-f-t-t.json
+python scripts/test_integration.py test_f-f-f-t-t.json
 
 # Test with alternative configuration
-python test_integration.py test_f-f-f-t-f.json
+python scripts/test_integration.py test_f-f-f-t-f.json
 
 # Test with custom configuration
-python test_integration.py my_custom_config.json
+python scripts/test_integration.py my_custom_config.json
 ```
 
 If you run the script without arguments, it will display usage instructions.
@@ -943,10 +943,10 @@ cp test_f-f-f-t-t.json config_my_test.json
 
 # Edit parameters in config_my_test.json
 # Then test with:
-python test_integration.py config_my_test.json
+python scripts/test_integration.py config_my_test.json
 ```
 
-This testing framework validates the complete model pipeline and provides immediate visual feedback on model behavior through the generated charts. Remember that the control variables remain constant during forward integration—to find optimal time-varying control policies, use `run_optimization.py` instead.
+This testing framework validates the complete model pipeline and provides immediate visual feedback on model behavior through the generated charts. Remember that the control variables remain constant during forward integration—to find optimal time-varying control policies, use `scripts/run_optimization.py` instead.
 
 ### Running Optimizations with Parameter Overrides
 
@@ -957,23 +957,23 @@ The optimization script supports command line parameter overrides, enabling auto
 Override any configuration parameter using dot notation:
 
 ```bash
-python run_optimization.py config.json --key.subkey.value new_value
+python scripts/run_optimization.py config.json --key.subkey.value new_value
 ```
 
 **Examples:**
 
 ```bash
 # Override single parameter
-python run_optimization.py test_f-f-f-t-t.json --scalar_parameters.alpha 0.35
+python scripts/run_optimization.py test_f-f-f-t-t.json --scalar_parameters.alpha 0.35
 
 # Override multiple parameters
-python run_optimization.py test_f-f-f-t-t.json \
+python scripts/run_optimization.py test_f-f-f-t-t.json \
   --run_name "sensitivity_test" \
   --optimization_parameters.initial_guess 0.3 \
   --scalar_parameters.rho 0.015
 
 # Override nested parameters
-python run_optimization.py test_f-f-f-t-t.json \
+python scripts/run_optimization.py test_f-f-f-t-t.json \
   --time_functions.A.growth_rate 0.02 \
   --optimization_parameters.n_points_final 100
 ```
@@ -990,10 +990,10 @@ python run_optimization.py test_f-f-f-t-t.json \
 
 #### Automated Parameter Sweeps
 
-The `run_initial_guess_sweep.py` script demonstrates automated testing across multiple parameter values:
+The `scripts/run_initial_guess_sweep.py` script demonstrates automated testing across multiple parameter values:
 
 ```bash
-python run_initial_guess_sweep.py test_f-f-f-t-t.json
+python scripts/run_initial_guess_sweep.py test_f-f-f-t-t.json
 ```
 
 This runs optimization 11 times with `initial_guess` values from 0.0 to 1.0 (step 0.1), automatically creating separate output directories for each run.
@@ -1008,7 +1008,7 @@ config_file = "test_f-f-f-t-t.json"
 # Sweep over alpha values
 for alpha in [0.25, 0.30, 0.35, 0.40]:
     cmd = [
-        "python", "run_optimization.py", config_file,
+        "python", "scripts/run_optimization.py", config_file,
         "--scalar_parameters.alpha", str(alpha),
         "--run_name", f"alpha_{alpha:.2f}"
     ]
@@ -1024,33 +1024,33 @@ for alpha in [0.25, 0.30, 0.35, 0.40]:
 
 ### Running Multiple Optimizations in Parallel
 
-The `run_parallel.py` script enables launching multiple optimization jobs simultaneously, with each job running on its own CPU core. This is ideal for parameter sweeps or running multiple scenarios.
+The `scripts/run_parallel.py` script enables launching multiple optimization jobs simultaneously, with each job running on its own CPU core. This is ideal for parameter sweeps or running multiple scenarios.
 
 #### Parallel Execution
 
 The script accepts file patterns (with wildcards) for JSON configuration files, plus optional parameter overrides:
 
 ```bash
-python run_parallel.py <pattern1> [pattern2] [...] [--key value] [...]
+python scripts/run_parallel.py <pattern1> [pattern2] [...] [--key value] [...]
 ```
 
 **Examples:**
 
 ```bash
 # Run all COIN equality configs in parallel
-python run_parallel.py "config_COIN-equality_000*.json"
+python scripts/run_parallel.py "config_COIN-equality_000*.json"
 
 # Run specific configuration files
-python run_parallel.py test_f-f-f-t-t.json test_f-f-f-t-f.json
+python scripts/run_parallel.py test_f-f-f-t-t.json test_f-f-f-t-f.json
 
 # Run multiple patterns (use wildcard patterns for multiple files)
-python run_parallel.py "test_*.json"
+python scripts/run_parallel.py "test_*.json"
 
 # Quick test with reduced evaluations (applied to all jobs)
-python run_parallel.py "test_*.json" --optimization_params.max_evaluations 100
+python scripts/run_parallel.py "test_*.json" --optimization_params.max_evaluations 100
 
 # Override multiple parameters
-python run_parallel.py "test_*.json" --optimization_params.max_evaluations 100 --run_name quick_test
+python scripts/run_parallel.py "test_*.json" --optimization_params.max_evaluations 100 --run_name quick_test
 ```
 
 #### How It Works
@@ -1085,8 +1085,8 @@ ps aux | grep run_optimization
 # Kill a specific job by PID
 kill <PID>
 
-# Kill ALL run_optimization.py jobs at once
-pkill -f run_optimization.py
+# Kill ALL scripts/run_optimization.py jobs at once
+pkill -f scripts/run_optimization.py
 ```
 
 Process IDs (PIDs) are displayed when jobs are launched. The terminal output file updates continuously as the optimization progresses, allowing you to track:
@@ -1095,22 +1095,22 @@ Process IDs (PIDs) are displayed when jobs are launched. The terminal output fil
 - Function evaluations and objective values
 - Final results and file generation
 
-**Note:** The `pkill` command will terminate all running `run_optimization.py` processes, which is useful for stopping an entire parameter sweep but should be used with caution if you have multiple independent jobs running.
+**Note:** The `pkill` command will terminate all running `scripts/run_optimization.py` processes, which is useful for stopping an entire parameter sweep but should be used with caution if you have multiple independent jobs running.
 
 #### Typical Workflow
 
 ```bash
 # 1. Quick test with reduced evaluations
-python run_parallel.py "config_sensitivity_*.json" --optimization_params.max_evaluations 100
+python scripts/run_parallel.py "config_sensitivity_*.json" --optimization_params.max_evaluations 100
 
 # 2. Monitor progress
 watch -n 10 'ps aux | grep run_optimization | wc -l'
 
 # 3. After test completes, run full optimization
-python run_parallel.py "config_sensitivity_*.json"
+python scripts/run_parallel.py "config_sensitivity_*.json"
 
 # 4. After jobs complete, compare results
-python compare_results.py "data/output/sensitivity_*/"
+python scripts/compare_results.py "data/output/sensitivity_*/"
 ```
 
 **Benefits:**
@@ -1126,23 +1126,23 @@ After running multiple optimizations (e.g., parameter sweeps or scenario compari
 
 #### Running Comparisons
 
-The `compare_results.py` script accepts unlimited directory paths with wildcard support:
+The `scripts/compare_results.py` script accepts unlimited directory paths with wildcard support:
 
 ```bash
-python compare_results.py <path1> [path2] [path3] [...]
+python scripts/compare_results.py <path1> [path2] [path3] [...]
 ```
 
 **Examples:**
 
 ```bash
 # Compare all runs matching a pattern
-python compare_results.py "data/output/test_*/"
+python scripts/compare_results.py "data/output/test_*/"
 
 # Compare specific directories
-python compare_results.py data/output/baseline/ data/output/high_eta/
+python scripts/compare_results.py data/output/baseline/ data/output/high_eta/
 
 # Compare multiple patterns
-python compare_results.py "data/output/alpha_*/" "data/output/rho_*/"
+python scripts/compare_results.py "data/output/alpha_*/" "data/output/rho_*/"
 ```
 
 #### Comparison Outputs
@@ -1198,12 +1198,12 @@ The tool compares data from two sources:
 **Sequential execution:**
 ```bash
 # Run parameter sweep one at a time
-python run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 0.5 --run_name eta_0.5
-python run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 1.0 --run_name eta_1.0
-python run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 1.5 --run_name eta_1.5
+python scripts/run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 0.5 --run_name eta_0.5
+python scripts/run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 1.0 --run_name eta_1.0
+python scripts/run_optimization.py test_f-f-f-t-t.json --scalar_parameters.eta 1.5 --run_name eta_1.5
 
 # Compare results (creates data/output/comparison_YYYYMMDD-HHMMSS/)
-python compare_results.py "data/output/eta_*/"
+python scripts/compare_results.py "data/output/eta_*/"
 ```
 
 **Parallel execution (faster):**
@@ -1212,10 +1212,10 @@ python compare_results.py "data/output/eta_*/"
 # (or use run_parallel.py with existing configs)
 
 # Run all optimizations in parallel
-python run_parallel.py "config_eta_*.json"
+python scripts/run_parallel.py "config_eta_*.json"
 
 # After jobs complete, compare results
-python compare_results.py "data/output/eta_*/"
+python scripts/compare_results.py "data/output/eta_*/"
 
 # View outputs (use actual timestamp from comparison output)
 cd data/output/comparison_YYYYMMDD-HHMMSS/
@@ -1361,7 +1361,7 @@ All arrays have the same length corresponding to time points from `t_start` to `
 
 ## Social Cost of Carbon (SCC) Estimation
 
-The model computes the Social Cost of Carbon using a **perturbation method** that evaluates the welfare impact of marginal emissions relative to the welfare impact of marginal consumption. This approach is implemented in `calculate_scc.py` and uses parameters defined in the economic model.
+The model computes the Social Cost of Carbon using a **perturbation method** that evaluates the welfare impact of marginal emissions relative to the welfare impact of marginal consumption. This approach is implemented in `scripts/calculate_scc.py` and uses parameters defined in the economic model.
 
 ### Methodology
 
@@ -1470,18 +1470,18 @@ For comparison with the **welfare-adjusted MAC** (marginal abatement cost), see 
 
 ```bash
 # Basic SCC calculation
-python calculate_scc.py \
+python scripts/calculate_scc.py \
     --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
     --pulse-year 2025
 
 # With sensitivity tests
-python calculate_scc.py \
+python scripts/calculate_scc.py \
     --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
     --pulse-year 2025 \
     --sensitivity-test
 
 # Override pulse amounts
-python calculate_scc.py \
+python scripts/calculate_scc.py \
     --baseline data/output/config_019_f-f-f-f-f_1_100k_mu_up_false_20260205-123456/ \
     --pulse-year 2025 \
     --emission-amount 1e10 \
@@ -1553,23 +1553,23 @@ output_paths = save_results(results, config.run_name)
 print(f"Results saved to: {output_paths['output_dir']}")
 ```
 
-See the **Testing the Forward Model** section above for detailed instructions on using `test_integration.py`.
+See the **Testing the Forward Model** section above for detailed instructions on using `scripts/test_integration.py`.
 
 ### Comparing Multiple Runs
 
-The `plot_combined_results.py` utility creates combined PDF reports showing multiple optimization runs overlaid on the same plots for easy comparison.
+The `scripts/plot_combined_results.py` utility creates combined PDF reports showing multiple optimization runs overlaid on the same plots for easy comparison.
 
 **Usage:**
 
 ```bash
 # Compare all runs matching a pattern
-python plot_combined_results.py "data/output/COIN-equality_003_tt-*"
+python scripts/plot_combined_results.py "data/output/COIN-equality_003_tt-*"
 
 # Compare specific runs
-python plot_combined_results.py data/output/run1 data/output/run2 data/output/run3
+python scripts/plot_combined_results.py data/output/run1 data/output/run2 data/output/run3
 
 # Specify custom output file
-python plot_combined_results.py --output my_comparison.pdf "data/output/COIN*"
+python scripts/plot_combined_results.py --output my_comparison.pdf "data/output/COIN*"
 ```
 
 **Output:**
@@ -1582,10 +1582,10 @@ python plot_combined_results.py --output my_comparison.pdf "data/output/COIN*"
 
 ```bash
 # Compare all runs with different tax policies (tt vs tf vs ff)
-python plot_combined_results.py "data/output/*-t-t*" "data/output/*-t-f*" "data/output/*-f-f*"
+python scripts/plot_combined_results.py "data/output/*-t-t*" "data/output/*-t-f*" "data/output/*-f-f*"
 
 # Compare all completed runs
-python plot_combined_results.py "data/output/*/results.csv"
+python scripts/plot_combined_results.py "data/output/*/results.csv"
 ```
 
 The utility automatically:

@@ -23,16 +23,21 @@ Examples:
 """
 
 import sys
+import os
 import datetime
 from pathlib import Path
-from comparison_utils import (
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.comparison_utils import (
     discover_result_directories,
     load_optimization_summaries,
     load_results_csvs,
     create_comparison_xlsx,
     create_results_comparison_xlsx
 )
-from visualization_utils import create_comparison_report_pdf
+from src.visualization_utils import create_comparison_report_pdf
 
 
 def create_comparison_directory():

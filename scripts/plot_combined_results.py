@@ -26,11 +26,16 @@ Examples:
 
 import argparse
 import sys
+import os
 from pathlib import Path
 import pandas as pd
 from glob import glob
 from datetime import datetime
-from visualization_utils import create_results_report_pdf
+
+# Add project root to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.visualization_utils import create_results_report_pdf
 
 
 def find_results_files(path_patterns):
