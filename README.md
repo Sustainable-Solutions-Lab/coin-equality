@@ -134,6 +134,23 @@ The SCC represents the marginal welfare cost of emitting one additional tonne of
 - `--consumption-amount`: Consumption pulse size in $ (default: from config)
 - `--sensitivity-test`: Run pulse-size and time-shift invariance tests
 
+### Batch SCC Calculation
+
+Use `batch_scc.py` to calculate SCC for multiple result directories at once:
+
+```bash
+# Default: process all directories in data/output/reference/
+python scripts/batch_scc.py
+
+# Process specific directories with wildcards
+python scripts/batch_scc.py "data/output/config_022_*"
+
+# Change pulse year (default is 2025)
+python scripts/batch_scc.py --pulse-year 2050
+```
+
+Output is printed to the console showing SCC values for each directory. Individual results are also saved to `scc_results.csv` in each result directory.
+
 ### Analyzing Optimization Convergence
 
 Use `compare_optimization_convergence.py` to analyze how well different optimization runs have converged:

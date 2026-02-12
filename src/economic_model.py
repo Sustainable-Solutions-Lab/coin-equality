@@ -433,7 +433,7 @@ def calculate_tendencies(state, params,
             consumption_extra = amount_extra_consumption / (L * dt)
             # assume extra consumption comes from abatement cost
             # note: possible perverse result in a zero tax situation
-            abateCost_effective_ = max(0.0, abateCost_amount - consumption_extra)
+            abateCost_effective = max(0.0, abateCost_amount - consumption_extra)
         else:
             consumption_extra = 0.0
             abateCost_effective = abateCost_amount

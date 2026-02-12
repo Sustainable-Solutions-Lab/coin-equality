@@ -20,6 +20,7 @@ import os
 import sys
 import csv
 import numpy as np
+from datetime import datetime
 from scipy.interpolate import PchipInterpolator
 
 # Add project root to path for imports
@@ -442,22 +443,69 @@ def run_time_shift_test(config_path, control_function,
     return results
 
 
-def save_results(results, output_path):
+def save_results(all_results, output_path, baseline_path):
     """
-    Save SCC results to CSV.
+    Save all SCC results to CSV in row-based format.
 
     Parameters
     ----------
-    results : dict
-        Results from compute_scc plus metadata
+    all_results : list of dict
+        List of results, each containing test_type, SCC values, and metadata
     output_path : str
         Path to output CSV file
+    baseline_path : str
+        Path to baseline results directory
     """
+    # Define column order for consistent output
+    columns = [
+        'timestamp',
+        'test_type',
+        'pulse_year',
+        'scale_factor',
+        'emission_amount',
+        'consumption_amount',
+        'W_baseline',
+        'W_emission',
+        'W_consumption',
+        'dW_emission',
+        'dW_consumption',
+        'm_E',
+        'm_C',
+        'SCC',
+        'emission_check',
+        'consumption_check',
+        'scc_check',
+        'baseline_path',
+    ]
+
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
     with open(output_path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(['parameter', 'value'])
-        for key, value in results.items():
-            writer.writerow([key, value])
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+
+        for result in all_results:
+            row = {
+                'timestamp': timestamp,
+                'test_type': result.get('test_type', 'main'),
+                'pulse_year': result.get('pulse_year', ''),
+                'scale_factor': result.get('scale', 1.0),
+                'emission_amount': result.get('emission_amount', ''),
+                'consumption_amount': result.get('consumption_amount', ''),
+                'W_baseline': result.get('W_baseline', ''),
+                'W_emission': result.get('W_emission', ''),
+                'W_consumption': result.get('W_consumption', ''),
+                'dW_emission': result.get('dW_emission', ''),
+                'dW_consumption': result.get('dW_consumption', ''),
+                'm_E': result.get('m_E', ''),
+                'm_C': result.get('m_C', ''),
+                'SCC': result.get('SCC', ''),
+                'emission_check': result.get('emission_check', ''),
+                'consumption_check': result.get('consumption_check', ''),
+                'scc_check': result.get('scc_check', ''),
+                'baseline_path': baseline_path,
+            }
+            writer.writerow(row)
 
 
 def main():
@@ -585,10 +633,14 @@ Pulse amounts default to values in config scalar_parameters:
     )
 
     # Add metadata
+    results['test_type'] = 'main'
     results['pulse_year'] = args.pulse_year
     results['emission_amount'] = emission_amount
     results['consumption_amount'] = consumption_amount
     results['baseline_path'] = args.baseline
+
+    # Collect all results for saving
+    all_results = [results]
 
     # Print results
     print("\n" + "=" * 80)
@@ -615,25 +667,39 @@ Pulse amounts default to values in config scalar_parameters:
     print(f"  SCC = ${results['SCC']:.2f}/tCO2  {check_scc}")
     print("-" * 80)
 
-    # Save results
+    # Run sensitivity tests if requested and collect results
+    if args.sensitivity_test:
+        sensitivity_results = run_sensitivity_test(
+            baseline['config_path'], control_function,
+            args.pulse_year, emission_amount, consumption_amount
+        )
+        # Add metadata and test_type to sensitivity results
+        for r in sensitivity_results:
+            r['test_type'] = 'sensitivity'
+            r['pulse_year'] = args.pulse_year
+            r['emission_amount'] = emission_amount * r['scale']
+            r['consumption_amount'] = consumption_amount * r['scale']
+        all_results.extend(sensitivity_results)
+
+        time_shift_results = run_time_shift_test(
+            baseline['config_path'], control_function,
+            emission_amount, consumption_amount
+        )
+        # Add metadata and test_type to time-shift results
+        for r in time_shift_results:
+            r['test_type'] = 'time_shift'
+            r['emission_amount'] = emission_amount
+            r['consumption_amount'] = consumption_amount
+        all_results.extend(time_shift_results)
+
+    # Save all results
     if args.output:
         output_path = args.output
     else:
         output_path = os.path.join(args.baseline, 'scc_results.csv')
 
-    save_results(results, output_path)
+    save_results(all_results, output_path, args.baseline)
     print(f"\nResults saved to: {output_path}")
-
-    # Run sensitivity tests if requested
-    if args.sensitivity_test:
-        run_sensitivity_test(
-            baseline['config_path'], control_function,
-            args.pulse_year, emission_amount, consumption_amount
-        )
-        run_time_shift_test(
-            baseline['config_path'], control_function,
-            emission_amount, consumption_amount
-        )
 
     # Return SCC for programmatic use
     return results['SCC']
