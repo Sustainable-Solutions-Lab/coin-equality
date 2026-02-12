@@ -503,7 +503,7 @@ def calculate_tendencies(state, params,
                     y_gross, gini, Omega_calc,
                     omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
                     Fmin_prev, Fmax_prev, xi_edges,
-                    redistribution_amount, abateCost_amount,
+                    redistribution_amount, abateCost_amount - consumption_extra ,
                     use_empirical_lorenz,
                     initial_guess=Fmax_prev,
                 )
@@ -617,7 +617,7 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            max_consumption = max_y_net * (1 - s) + consumption_extra / (1.0 - Fmax) 
+            max_consumption = max_y_net * (1 - s) 
             # add extra consumption pulse for SCC calculation, extra consumption in on a per capita basis,
             # but only (1-Fmax) fraction of population receives it, so divide by (1-Fmax) to get 
             # per capita amount for those above Fmax 
