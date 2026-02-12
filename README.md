@@ -133,10 +133,11 @@ The SCC represents the marginal welfare cost of emitting one additional tonne of
 - `--emission-amount`: Emission pulse size in tCO2 (default: from config)
 - `--consumption-amount`: Consumption pulse size in $ (default: from config)
 - `--sensitivity-test`: Run pulse-size and time-shift invariance tests
+- `--scaling-factors`: Comma-separated scaling factors for sensitivity test (default: "1")
 
 ### Batch SCC Calculation
 
-Use `batch_scc.py` to calculate SCC for multiple result directories at once:
+Use `batch_scc.py` to calculate SCC for multiple result directories at once. The script runs a cross-product of pulse years × scaling factors for comprehensive sensitivity analysis.
 
 ```bash
 # Default: process all directories in data/output/reference/
@@ -145,11 +146,24 @@ python scripts/batch_scc.py
 # Process specific directories with wildcards
 python scripts/batch_scc.py "data/output/config_022_*"
 
-# Change pulse year (default is 2025)
-python scripts/batch_scc.py --pulse-year 2050
+# Multiple pulse years and scaling factors (runs 3×3 = 9 combinations per directory)
+python scripts/batch_scc.py --pulse-years "2025,2050,2100" --scaling-factors "0.001,1,1000"
+
+# Save detailed integration results as CSV files
+python scripts/batch_scc.py --save-integration-results
 ```
 
-Output is printed to the console showing SCC values for each directory. Individual results are also saved to `scc_results.csv` in each result directory.
+**Options:**
+- `--pulse-years`: Comma-separated years to apply pulses (default: "2025")
+- `--pulse-year`: Single year (legacy, same as --pulse-years with one value)
+- `--scaling-factors`: Comma-separated scaling factors (default: "1")
+- `--emission-amount`: Emission pulse size in tCO2 (default: from config)
+- `--consumption-amount`: Consumption pulse size in $ (default: from config)
+- `--save-integration-results`: Save full integration results as CSV files
+
+Output is saved to a timestamped directory `data/output/scc_YYYYMMDD-HHMMSS/` containing:
+- `scc_results.xlsx`: Consolidated SCC results from all directories
+- `*_results.csv`: Integration results for each scenario (if --save-integration-results)
 
 ### Analyzing Optimization Convergence
 

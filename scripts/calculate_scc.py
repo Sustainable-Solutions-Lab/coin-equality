@@ -26,7 +26,7 @@ from scipy.interpolate import PchipInterpolator
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.economic_model import integrate_model
+from src.economic_model import integrate_model, create_derived_variables
 from src.parameters import load_configuration
 
 
@@ -197,7 +197,7 @@ def create_config_with_pulse(config_path, control_function,
     return config
 
 
-def run_scenario(config):
+def run_scenario(config, store_detailed_output=False):
     """
     Run integration and return the objective (welfare) value.
 
@@ -205,14 +205,16 @@ def run_scenario(config):
     ----------
     config : ModelConfiguration
         Configuration for integration
+    store_detailed_output : bool
+        If True, return full results dict along with objective
 
     Returns
     -------
-    float
-        Objective value (discounted welfare integral)
+    float or tuple
+        If store_detailed_output=False: objective value (discounted welfare integral)
+        If store_detailed_output=True: (objective, results_dict)
     """
-    # Run integration without detailed output for speed
-    results = integrate_model(config, store_detailed_output=False)
+    results = integrate_model(config, store_detailed_output=store_detailed_output)
 
     # Calculate objective (same as in optimization.py)
     rho = config.scalar_params.rho
@@ -225,6 +227,10 @@ def run_scenario(config):
 
     objective = np.trapezoid(integrand, t)
 
+    if store_detailed_output:
+        # Create derived variables needed for CSV output
+        create_derived_variables(results)
+        return objective, results
     return objective
 
 
@@ -280,7 +286,8 @@ def compute_scc(W_baseline, W_emission, W_consumption,
 
 
 def run_sensitivity_test(config_path, control_function, pulse_year,
-                         emission_amount, consumption_amount, quiet=False):
+                         emission_amount, consumption_amount, scaling_factors,
+                         quiet=False, return_integration_results=False):
     """
     Run pulse-size sensitivity test to verify SCC is in the linear (marginal) regime.
 
@@ -296,15 +303,20 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
         Base emission pulse amount in tCO2
     consumption_amount : float
         Base consumption pulse amount in $
+    scaling_factors : list of float
+        Scaling factors to test (e.g., [0.001, 1.0, 1000] or [1])
     quiet : bool
         Suppress output if True
+    return_integration_results : bool
+        If True, also return dict of integration results keyed by scenario name
 
     Returns
     -------
-    list of dict
-        Results for each scaling factor
+    list of dict or tuple
+        If return_integration_results=False: list of SCC results
+        If return_integration_results=True: (list of SCC results, dict of integration results)
     """
-    scaling_factors = [0.001, 1.0, 1000]
+    integration_results = {} if return_integration_results else None
 
     if not quiet:
         print("\n" + "=" * 80)
@@ -319,7 +331,11 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
     config_baseline = create_config_with_pulse(
         config_path, control_function, 0.0, 0.0, 0.0, 0.0
     )
-    W_baseline = run_scenario(config_baseline)
+    if return_integration_results:
+        W_baseline, baseline_results = run_scenario(config_baseline, store_detailed_output=True)
+        integration_results['baseline'] = baseline_results
+    else:
+        W_baseline = run_scenario(config_baseline)
 
     if not quiet:
         print(f"  W_baseline = {W_baseline:.10e}")
@@ -335,12 +351,20 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
         config_e = create_config_with_pulse(
             config_path, control_function, pulse_year, e_amount, 0.0, 0.0
         )
-        W_e = run_scenario(config_e)
+        if return_integration_results:
+            W_e, emission_results = run_scenario(config_e, store_detailed_output=True)
+            integration_results[f'emission_scale_{scale}'] = emission_results
+        else:
+            W_e = run_scenario(config_e)
 
         config_c = create_config_with_pulse(
             config_path, control_function, 0.0, 0.0, pulse_year, c_amount
         )
-        W_c = run_scenario(config_c)
+        if return_integration_results:
+            W_c, consumption_results = run_scenario(config_c, store_detailed_output=True)
+            integration_results[f'consumption_scale_{scale}'] = consumption_results
+        else:
+            W_c = run_scenario(config_c)
 
         scc_result = compute_scc(W_baseline, W_e, W_c, e_amount, c_amount)
         scc_result['scale'] = scale
@@ -371,6 +395,8 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
         else:
             print(f"Max deviation: {max_deviation:.2f}% -- FAIL (nonlinear effects or numerical noise)")
 
+    if return_integration_results:
+        return results, integration_results
     return results
 
 
@@ -525,7 +551,8 @@ def save_results(all_results, output_path, baseline_path):
 
 def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
                                  consumption_amount=None, run_sensitivity=False,
-                                 quiet=False):
+                                 scaling_factors=None, quiet=False,
+                                 return_integration_results=False):
     """
     Core function to calculate SCC for a single directory.
 
@@ -541,14 +568,23 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
         Consumption pulse amount in $ (default: from config)
     run_sensitivity : bool
         Run sensitivity and time-shift tests
+    scaling_factors : list of float, optional
+        Scaling factors for sensitivity test (default: [1])
     quiet : bool
         Suppress output if True
+    return_integration_results : bool
+        If True, also return dict of all integration results keyed by scenario name
 
     Returns
     -------
-    list of dict
-        All results (main + sensitivity + time_shift if requested)
+    list of dict or tuple
+        If return_integration_results=False: list of SCC results
+        If return_integration_results=True: (list of SCC results, dict of integration results)
     """
+    if scaling_factors is None:
+        scaling_factors = [1]
+
+    integration_results = {} if return_integration_results else None
     # Load baseline
     baseline = load_baseline(baseline_path)
 
@@ -588,7 +624,16 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
         year_extra_emission=0.0, amount_extra_emission=0.0,
         year_extra_consumption=0.0, amount_extra_consumption=0.0
     )
-    W_baseline = run_scenario(config_baseline)
+    # Only save baseline results here if NOT running sensitivity test
+    # (sensitivity test saves its own baseline)
+    save_main_results = return_integration_results and not run_sensitivity
+    if save_main_results:
+        W_baseline, baseline_int_results = run_scenario(
+            config_baseline, store_detailed_output=True
+        )
+        integration_results['baseline'] = baseline_int_results
+    else:
+        W_baseline = run_scenario(config_baseline)
 
     # Run emission pulse scenario
     config_emission = create_config_with_pulse(
@@ -596,7 +641,13 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
         year_extra_emission=pulse_year, amount_extra_emission=emission_amount,
         year_extra_consumption=0.0, amount_extra_consumption=0.0
     )
-    W_emission = run_scenario(config_emission)
+    if save_main_results:
+        W_emission, emission_int_results = run_scenario(
+            config_emission, store_detailed_output=True
+        )
+        integration_results['emission'] = emission_int_results
+    else:
+        W_emission = run_scenario(config_emission)
 
     # Run consumption pulse scenario
     config_consumption = create_config_with_pulse(
@@ -604,7 +655,13 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
         year_extra_emission=0.0, amount_extra_emission=0.0,
         year_extra_consumption=pulse_year, amount_extra_consumption=consumption_amount
     )
-    W_consumption = run_scenario(config_consumption)
+    if save_main_results:
+        W_consumption, consumption_int_results = run_scenario(
+            config_consumption, store_detailed_output=True
+        )
+        integration_results['consumption'] = consumption_int_results
+    else:
+        W_consumption = run_scenario(config_consumption)
 
     # Compute SCC
     results = compute_scc(
@@ -624,10 +681,19 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
 
     # Run sensitivity tests if requested
     if run_sensitivity:
-        sensitivity_results = run_sensitivity_test(
-            baseline['config_path'], control_function,
-            pulse_year, emission_amount, consumption_amount, quiet=quiet
-        )
+        if return_integration_results:
+            sensitivity_results, sensitivity_int_results = run_sensitivity_test(
+                baseline['config_path'], control_function,
+                pulse_year, emission_amount, consumption_amount, scaling_factors,
+                quiet=quiet, return_integration_results=True
+            )
+            integration_results.update(sensitivity_int_results)
+        else:
+            sensitivity_results = run_sensitivity_test(
+                baseline['config_path'], control_function,
+                pulse_year, emission_amount, consumption_amount, scaling_factors,
+                quiet=quiet
+            )
         for r in sensitivity_results:
             r['test_type'] = 'sensitivity'
             r['pulse_year'] = pulse_year
@@ -645,6 +711,8 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
             r['consumption_amount'] = consumption_amount
         all_results.extend(time_shift_results)
 
+    if return_integration_results:
+        return all_results, integration_results
     return all_results
 
 
@@ -676,10 +744,15 @@ Pulse amounts default to values in config scalar_parameters:
                         help='Output CSV path (default: scc_results.csv in baseline dir)')
     parser.add_argument('--sensitivity-test', action='store_true',
                         help='Run pulse-size sensitivity and time-shift invariance tests')
+    parser.add_argument('--scaling-factors', type=str, default='1',
+                        help='Comma-separated scaling factors for sensitivity test (default: "1")')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress most output (only show summary)')
 
     args = parser.parse_args()
+
+    # Parse scaling factors
+    scaling_factors = [float(x.strip()) for x in args.scaling_factors.split(',')]
 
     if not args.quiet:
         print("=" * 80)
@@ -694,6 +767,7 @@ Pulse amounts default to values in config scalar_parameters:
         emission_amount=args.emission_amount,
         consumption_amount=args.consumption_amount,
         run_sensitivity=args.sensitivity_test,
+        scaling_factors=scaling_factors,
         quiet=args.quiet
     )
 

@@ -3,6 +3,7 @@
 Batch calculate Social Cost of Carbon (SCC) for multiple result directories.
 
 Creates a timestamped output directory with consolidated results in xlsx format.
+Runs cross-product of pulse years × scaling factors for comprehensive sensitivity analysis.
 
 Usage:
     python scripts/batch_scc.py [directory_patterns...] [options]
@@ -12,10 +13,12 @@ Arguments:
                        If not specified, defaults to data/output/reference/*
 
 Options:
-    --pulse-year YEAR              Year to apply perturbation pulse (default: 2025)
+    --pulse-years YEARS            Comma-separated years to apply pulses (default: "2025")
+    --pulse-year YEAR              Single year (legacy, same as --pulse-years with one value)
+    --scaling-factors FACTORS      Comma-separated scaling factors (default: "1")
     --emission-amount AMOUNT       Emission pulse amount in tCO2 (default: from config)
     --consumption-amount AMOUNT    Consumption pulse amount in $ (default: from config)
-    --sensitivity-test             Run pulse-size and time-shift invariance tests
+    --save-integration-results     Save full integration results as CSV files
 
 Examples:
     # Use default reference directories
@@ -24,18 +27,19 @@ Examples:
     # Process specific directories
     python scripts/batch_scc.py "data/output/config_022_*_20260211-133736"
 
-    # Process multiple patterns
-    python scripts/batch_scc.py "data/output/config_020_*" "data/output/config_021_*"
+    # Multiple pulse years and scaling factors (runs 3×3 = 9 combinations per directory)
+    python scripts/batch_scc.py --pulse-years "2025,2050,2100" --scaling-factors "0.001,1,1000"
 
-    # Run with sensitivity test
-    python scripts/batch_scc.py --sensitivity-test
+    # Save detailed integration results as CSV files
+    python scripts/batch_scc.py --save-integration-results
 
     # Custom pulse year and amounts
     python scripts/batch_scc.py --pulse-year 2030 --emission-amount 1e9
 
 Output:
     Creates ./data/output/scc_YYYYMMDD-HHMMSS/ directory containing:
-    - scc_results.xlsx: Consolidated results from all directories
+    - scc_results.xlsx: Consolidated SCC results from all directories
+    - *_results.csv: Integration results for each scenario (if --save-integration-results)
 """
 
 import os
@@ -49,9 +53,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 from scripts.calculate_scc import calculate_scc_for_directory
+from src.output import write_results_csv
 
 DEFAULT_REFERENCE_DIR = "data/output/reference/*"
-DEFAULT_PULSE_YEAR = 2025
+DEFAULT_PULSE_YEARS = [2025]
+DEFAULT_SCALING_FACTORS = [1]
 
 
 def parse_arguments(args):
@@ -65,21 +71,30 @@ def parse_arguments(args):
     """
     patterns = []
     options = {
-        'pulse_year': DEFAULT_PULSE_YEAR,
+        'pulse_years': DEFAULT_PULSE_YEARS,
         'emission_amount': None,
         'consumption_amount': None,
-        'sensitivity_test': False,
+        'scaling_factors': DEFAULT_SCALING_FACTORS,
+        'save_integration_results': False,
     }
 
     i = 0
     while i < len(args):
         arg = args[i]
         if arg == '--pulse-year':
+            # Legacy single-year option
             if i + 1 < len(args):
-                options['pulse_year'] = int(args[i + 1])
+                options['pulse_years'] = [int(args[i + 1])]
                 i += 2
             else:
                 print("Error: --pulse-year requires a value")
+                sys.exit(1)
+        elif arg == '--pulse-years':
+            if i + 1 < len(args):
+                options['pulse_years'] = [int(x.strip()) for x in args[i + 1].split(',')]
+                i += 2
+            else:
+                print("Error: --pulse-years requires a value")
                 sys.exit(1)
         elif arg == '--emission-amount':
             if i + 1 < len(args):
@@ -96,7 +111,18 @@ def parse_arguments(args):
                 print("Error: --consumption-amount requires a value")
                 sys.exit(1)
         elif arg == '--sensitivity-test':
-            options['sensitivity_test'] = True
+            # Legacy option - just print warning and ignore
+            print("Warning: --sensitivity-test is deprecated. Use --scaling-factors instead.")
+            i += 1
+        elif arg == '--scaling-factors':
+            if i + 1 < len(args):
+                options['scaling_factors'] = [float(x.strip()) for x in args[i + 1].split(',')]
+                i += 2
+            else:
+                print("Error: --scaling-factors requires a value")
+                sys.exit(1)
+        elif arg == '--save-integration-results':
+            options['save_integration_results'] = True
             i += 1
         elif arg in ('-h', '--help'):
             print(__doc__)
@@ -225,8 +251,9 @@ def main():
     # Print minimal runtime info
     print(f"SCC Batch Calculation")
     print(f"  Directories: {len(directories)}")
-    print(f"  Pulse year: {options['pulse_year']}")
-    print(f"  Sensitivity test: {'Yes' if options['sensitivity_test'] else 'No'}")
+    print(f"  Pulse years: {options['pulse_years']}")
+    print(f"  Scaling factors: {options['scaling_factors']}")
+    print(f"  Save integration results: {'Yes' if options['save_integration_results'] else 'No'}")
     print(f"  Output: {output_dir}")
     print()
 
@@ -235,28 +262,49 @@ def main():
 
     for i, directory in enumerate(directories, 1):
         dir_name = directory.name
-        print(f"  [{i}/{len(directories)}] {dir_name}", end='', flush=True)
+        print(f"  [{i}/{len(directories)}] {dir_name}")
 
-        try:
-            results = calculate_scc_for_directory(
-                str(directory),
-                options['pulse_year'],
-                emission_amount=options['emission_amount'],
-                consumption_amount=options['consumption_amount'],
-                run_sensitivity=options['sensitivity_test'],
-                quiet=True
-            )
+        # Loop over pulse years
+        for pulse_year in options['pulse_years']:
+            try:
+                if options['save_integration_results']:
+                    results, integration_results = calculate_scc_for_directory(
+                        str(directory),
+                        pulse_year,
+                        emission_amount=options['emission_amount'],
+                        consumption_amount=options['consumption_amount'],
+                        run_sensitivity=True,
+                        scaling_factors=options['scaling_factors'],
+                        quiet=True,
+                        return_integration_results=True
+                    )
 
-            # Get main SCC result
-            main_scc = results[0]['SCC']
-            print(f" ... SCC = ${main_scc:.2f}/tCO2")
+                    # Save integration results to CSV files
+                    for scenario_name, int_results in integration_results.items():
+                        csv_filename = f"{dir_name}_year{pulse_year}_{scenario_name}_results.csv"
+                        write_results_csv(int_results, str(output_dir), filename=csv_filename)
 
-            # Convert to DataFrame and collect
-            df = results_to_dataframe(results, dir_name)
-            all_dataframes.append(df)
+                else:
+                    results = calculate_scc_for_directory(
+                        str(directory),
+                        pulse_year,
+                        emission_amount=options['emission_amount'],
+                        consumption_amount=options['consumption_amount'],
+                        run_sensitivity=True,
+                        scaling_factors=options['scaling_factors'],
+                        quiet=True
+                    )
 
-        except Exception as e:
-            print(f" ... ERROR: {e}")
+                # Get main SCC result for this year
+                main_scc = results[0]['SCC']
+                print(f"    Year {pulse_year}: SCC = ${main_scc:.2f}/tCO2")
+
+                # Convert to DataFrame and collect
+                df = results_to_dataframe(results, dir_name)
+                all_dataframes.append(df)
+
+            except Exception as e:
+                print(f"    Year {pulse_year}: ERROR: {e}")
 
     print()
 
@@ -273,6 +321,8 @@ def main():
 
     print(f"Results saved to: {xlsx_path}")
     print(f"  Total rows: {len(combined_df)}")
+    if options['save_integration_results']:
+        print(f"  Integration result CSVs saved to: {output_dir}")
 
 
 if __name__ == '__main__':
