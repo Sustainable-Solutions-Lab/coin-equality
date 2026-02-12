@@ -413,18 +413,6 @@ def calculate_tendencies(state, params,
         abateCost_amount = f * available_for_redistribution_and_abatement # per capita
         lambda_abate = abateCost_amount / y_damaged_calc # fraction of damaged production
 
-        tax_amount = abateCost_amount + redistribution_amount # per capita
-        # tax amount can be less than amount available if redistribution is turned off.
-
-        #========= for determination of SCC =================
-        # Extra consumption pulse (for sensitivity analysis)
-        if year_extra_consumption >= t and year_extra_consumption < t + dt:
-            consumption_extra = amount_extra_consumption / (L * dt)
-            # note: possible perverse result in a zero tax situation
-            tax_amount = max(0.0, tax_amount - consumption_extra)
-        else:
-            consumption_extra = 0.0
-
         # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
         # y_net (aggregate): gross production net of climate damage and abatement cost
         # Note: consumption + savings = y_net
@@ -438,13 +426,29 @@ def calculate_tendencies(state, params,
             # Uniform redistribution
             uniform_redistribution_amount = redistribution_amount
 
+        #========= (start) for determination of SCC =================
+        # Extra consumption pulse (for sensitivity analysis)
+
+        if year_extra_consumption >= t and year_extra_consumption < t + dt:
+            consumption_extra = amount_extra_consumption / (L * dt)
+            # assume extra consumption comes from abatement cost
+            # note: possible perverse result in a zero tax situation
+            abateCost_effective_ = max(0.0, abateCost_amount - consumption_extra)
+        else:
+            consumption_extra = 0.0
+            abateCost_effective = abateCost_amount
+        #========= (end) for determination of SCC =================
+
+        tax_amount = abateCost_effective + redistribution_amount # per capita
+        # tax amount can be less than amount available if redistribution is turned off.
+
         # Pre-compute uniform tax rate when policy is uniform so Fmin uses taxed income
         # Uniform tax always covers full budget (abatement + redistribution)
         # Fmin is calculated AFTER uniform tax to ensure equal consumption below Fmin
         if income_dependent_tax_policy:
             uniform_tax_rate = 0.0
         else:
-            uniform_tax_rate = (abateCost_amount + redistribution_amount) / y_damaged_calc
+            uniform_tax_rate = (abateCost_effective + redistribution_amount) / y_damaged_calc
 
         #------------------------------------------------------
         # Now we are going to do the income dependent part of the code
@@ -501,7 +505,7 @@ def calculate_tendencies(state, params,
                     y_gross, gini, Omega_calc,
                     omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
                     Fmin_prev, Fmax_prev, xi_edges,
-                    redistribution_amount, abateCost_amount,
+                    redistribution_amount, abateCost_effective,
                     use_empirical_lorenz,
                     initial_guess=Fmax_prev,
                 )
