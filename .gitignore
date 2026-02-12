@@ -43,6 +43,8 @@ Thumbs.db
 
 # Output directory
 data/output/
+# Exception: allow reference results to be archived
+!data/output/reference/
 
 # JSON older configurations
 json/older/
