@@ -433,13 +433,11 @@ def calculate_tendencies(state, params,
             consumption_extra = amount_extra_consumption / (L * dt)
             # assume extra consumption comes from abatement cost
             # note: possible perverse result in a zero tax situation
-            abateCost_effective = max(0.0, abateCost_amount - consumption_extra)
         else:
             consumption_extra = 0.0
-            abateCost_effective = abateCost_amount
         #========= (end) for determination of SCC =================
 
-        tax_amount = abateCost_effective + redistribution_amount # per capita
+        tax_amount = abateCost_amount - consumption_extra + redistribution_amount # per capita
         # tax amount can be less than amount available if redistribution is turned off.
 
         # Pre-compute uniform tax rate when policy is uniform so Fmin uses taxed income
@@ -448,7 +446,7 @@ def calculate_tendencies(state, params,
         if income_dependent_tax_policy:
             uniform_tax_rate = 0.0
         else:
-            uniform_tax_rate = (abateCost_effective + redistribution_amount) / y_damaged_calc
+            uniform_tax_rate = (abateCost_amount - consumption_extra + redistribution_amount) / y_damaged_calc
 
         #------------------------------------------------------
         # Now we are going to do the income dependent part of the code
@@ -505,7 +503,7 @@ def calculate_tendencies(state, params,
                     y_gross, gini, Omega_calc,
                     omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
                     Fmin_prev, Fmax_prev, xi_edges,
-                    redistribution_amount, abateCost_effective,
+                    redistribution_amount, abateCost_amount,
                     use_empirical_lorenz,
                     initial_guess=Fmax_prev,
                 )
@@ -619,7 +617,10 @@ def calculate_tendencies(state, params,
                 uniform_tax_rate, uniform_redistribution_amount, gini,
                 use_empirical_lorenz,
             )
-            max_consumption = max_y_net * (1 - s)
+            max_consumption = max_y_net * (1 - s) + consumption_extra / (1.0 - Fmax) 
+            # add extra consumption pulse for SCC calculation, extra consumption in on a per capita basis,
+            # but only (1-Fmax) fraction of population receives it, so divide by (1-Fmax) to get 
+            # per capita amount for those above Fmax 
 
             # Utility at this income level
             if eta == 1:

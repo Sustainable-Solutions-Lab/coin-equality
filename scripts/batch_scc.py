@@ -2,6 +2,8 @@
 """
 Batch calculate Social Cost of Carbon (SCC) for multiple result directories.
 
+Creates a timestamped output directory with consolidated results in xlsx format.
+
 Usage:
     python scripts/batch_scc.py [directory_patterns...] [options]
 
@@ -30,16 +32,23 @@ Examples:
 
     # Custom pulse year and amounts
     python scripts/batch_scc.py --pulse-year 2030 --emission-amount 1e9
+
+Output:
+    Creates ./data/output/scc_YYYYMMDD-HHMMSS/ directory containing:
+    - scc_results.xlsx: Consolidated results from all directories
 """
 
 import os
 import sys
 import glob
-import subprocess
 from pathlib import Path
+from datetime import datetime
 
 # Add project root to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pandas as pd
+from scripts.calculate_scc import calculate_scc_for_directory
 
 DEFAULT_REFERENCE_DIR = "data/output/reference/*"
 DEFAULT_PULSE_YEAR = 2025
@@ -131,55 +140,65 @@ def discover_directories(patterns):
     return sorted(directories)
 
 
-def run_scc_calculation(directory, options):
+def create_output_directory():
     """
-    Run SCC calculation for a single directory and extract results.
-
-    Parameters
-    ----------
-    directory : Path
-        Path to results directory
-    options : dict
-        Options dictionary with pulse_year, emission_amount, etc.
+    Create timestamped output directory.
 
     Returns
     -------
-    dict
-        Dictionary with directory name and SCC results
+    Path
+        Path to the created directory
     """
-    cmd = [
-        'python', 'scripts/calculate_scc.py',
-        '--baseline', str(directory),
-        '--pulse-year', str(options['pulse_year'])
-    ]
+    timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    output_dir = Path('data/output') / f'scc_{timestamp}'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
 
-    if options['emission_amount'] is not None:
-        cmd.extend(['--emission-amount', str(options['emission_amount'])])
 
-    if options['consumption_amount'] is not None:
-        cmd.extend(['--consumption-amount', str(options['consumption_amount'])])
+def results_to_dataframe(all_results, directory_name):
+    """
+    Convert results list to DataFrame with directory name added.
 
-    if options['sensitivity_test']:
-        cmd.append('--sensitivity-test')
+    Parameters
+    ----------
+    all_results : list of dict
+        Results from calculate_scc_for_directory
+    directory_name : str
+        Name of the source directory
 
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True
-    )
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with results
+    """
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
-    # Combine stdout and stderr
-    output = result.stdout + result.stderr
+    rows = []
+    for result in all_results:
+        row = {
+            'timestamp': timestamp,
+            'directory': directory_name,
+            'test_type': result.get('test_type', 'main'),
+            'pulse_year': result.get('pulse_year', ''),
+            'scale_factor': result.get('scale', 1.0),
+            'emission_amount': result.get('emission_amount', ''),
+            'consumption_amount': result.get('consumption_amount', ''),
+            'W_baseline': result.get('W_baseline', ''),
+            'W_emission': result.get('W_emission', ''),
+            'W_consumption': result.get('W_consumption', ''),
+            'dW_emission': result.get('dW_emission', ''),
+            'dW_consumption': result.get('dW_consumption', ''),
+            'm_E': result.get('m_E', ''),
+            'm_C': result.get('m_C', ''),
+            'SCC': result.get('SCC', ''),
+            'emission_check': result.get('emission_check', ''),
+            'consumption_check': result.get('consumption_check', ''),
+            'scc_check': result.get('scc_check', ''),
+            'baseline_path': result.get('baseline_path', ''),
+        }
+        rows.append(row)
 
-    # Extract lines containing "SCC"
-    scc_lines = [line for line in output.split('\n') if 'SCC' in line]
-
-    return {
-        'directory': directory.name,
-        'scc_lines': scc_lines,
-        'returncode': result.returncode,
-        'full_output': output
-    }
+    return pd.DataFrame(rows)
 
 
 def main():
@@ -191,7 +210,6 @@ def main():
     # Use default if no patterns specified
     if not patterns:
         patterns = [DEFAULT_REFERENCE_DIR]
-        print(f"No directories specified, using default: {DEFAULT_REFERENCE_DIR}")
 
     # Discover directories
     directories = discover_directories(patterns)
@@ -201,36 +219,60 @@ def main():
         print("Directories must contain results.csv or *results*.csv files.")
         sys.exit(1)
 
-    print(f"Found {len(directories)} result directories")
-    print(f"Pulse year: {options['pulse_year']}")
-    if options['emission_amount'] is not None:
-        print(f"Emission amount: {options['emission_amount']:.2e} tCO2")
-    if options['consumption_amount'] is not None:
-        print(f"Consumption amount: ${options['consumption_amount']:.2e}")
-    if options['sensitivity_test']:
-        print("Sensitivity test: ENABLED")
-    print("=" * 80)
+    # Create output directory
+    output_dir = create_output_directory()
+
+    # Print minimal runtime info
+    print(f"SCC Batch Calculation")
+    print(f"  Directories: {len(directories)}")
+    print(f"  Pulse year: {options['pulse_year']}")
+    print(f"  Sensitivity test: {'Yes' if options['sensitivity_test'] else 'No'}")
+    print(f"  Output: {output_dir}")
     print()
 
-    # Process each directory
-    for directory in directories:
-        print(f"=== {directory.name} ===")
+    # Collect all results
+    all_dataframes = []
 
-        result = run_scc_calculation(directory, options)
+    for i, directory in enumerate(directories, 1):
+        dir_name = directory.name
+        print(f"  [{i}/{len(directories)}] {dir_name}", end='', flush=True)
 
-        if result['scc_lines']:
-            for line in result['scc_lines']:
-                print(line)
-        elif result['returncode'] != 0:
-            print(f"  Error running SCC calculation (exit code {result['returncode']})")
-            # Show last few lines of output for debugging
-            lines = result['full_output'].strip().split('\n')
-            for line in lines[-5:]:
-                print(f"    {line}")
-        else:
-            print("  No SCC results found")
+        try:
+            results = calculate_scc_for_directory(
+                str(directory),
+                options['pulse_year'],
+                emission_amount=options['emission_amount'],
+                consumption_amount=options['consumption_amount'],
+                run_sensitivity=options['sensitivity_test'],
+                quiet=True
+            )
 
-        print()
+            # Get main SCC result
+            main_scc = results[0]['SCC']
+            print(f" ... SCC = ${main_scc:.2f}/tCO2")
+
+            # Convert to DataFrame and collect
+            df = results_to_dataframe(results, dir_name)
+            all_dataframes.append(df)
+
+        except Exception as e:
+            print(f" ... ERROR: {e}")
+
+    print()
+
+    if not all_dataframes:
+        print("No results collected. Exiting.")
+        sys.exit(1)
+
+    # Combine all results
+    combined_df = pd.concat(all_dataframes, ignore_index=True)
+
+    # Save to xlsx
+    xlsx_path = output_dir / 'scc_results.xlsx'
+    combined_df.to_excel(xlsx_path, index=False, sheet_name='SCC Results')
+
+    print(f"Results saved to: {xlsx_path}")
+    print(f"  Total rows: {len(combined_df)}")
 
 
 if __name__ == '__main__':

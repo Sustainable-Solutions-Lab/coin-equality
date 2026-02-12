@@ -218,7 +218,6 @@ def run_scenario(config):
     rho = config.scalar_params.rho
     t = results['t']
     U = results['U']
-    L = results['L']
 
     t_start = config.integration_params.t_start
     discount_factors = np.exp(-rho * (t - t_start))
@@ -281,7 +280,7 @@ def compute_scc(W_baseline, W_emission, W_consumption,
 
 
 def run_sensitivity_test(config_path, control_function, pulse_year,
-                         emission_amount, consumption_amount):
+                         emission_amount, consumption_amount, quiet=False):
     """
     Run pulse-size sensitivity test to verify SCC is in the linear (marginal) regime.
 
@@ -297,6 +296,8 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
         Base emission pulse amount in tCO2
     consumption_amount : float
         Base consumption pulse amount in $
+    quiet : bool
+        Suppress output if True
 
     Returns
     -------
@@ -305,27 +306,31 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
     """
     scaling_factors = [0.001, 1.0, 1000]
 
-    print("\n" + "=" * 80)
-    print("PULSE-SIZE SENSITIVITY TEST")
-    print("=" * 80)
-    print(f"\nPulse year: {pulse_year}")
-    print(f"Base emission: {emission_amount:.1e} tCO2, Base consumption: ${consumption_amount:.1e}")
-    print(f"Scaling factors: {scaling_factors}")
+    if not quiet:
+        print("\n" + "=" * 80)
+        print("PULSE-SIZE SENSITIVITY TEST")
+        print("=" * 80)
+        print(f"\nPulse year: {pulse_year}")
+        print(f"Base emission: {emission_amount:.1e} tCO2, Base consumption: ${consumption_amount:.1e}")
+        print(f"Scaling factors: {scaling_factors}")
+        print("\nRunning baseline integration...")
 
     # Single baseline (shared across all pulse sizes)
-    print("\nRunning baseline integration...")
     config_baseline = create_config_with_pulse(
         config_path, control_function, 0.0, 0.0, 0.0, 0.0
     )
     W_baseline = run_scenario(config_baseline)
-    print(f"  W_baseline = {W_baseline:.10e}")
+
+    if not quiet:
+        print(f"  W_baseline = {W_baseline:.10e}")
 
     results = []
     for scale in scaling_factors:
         e_amount = emission_amount * scale
         c_amount = consumption_amount * scale
 
-        print(f"\nScale {scale}x: emission={e_amount:.1e} tCO2, consumption=${c_amount:.1e}")
+        if not quiet:
+            print(f"\nScale {scale}x: emission={e_amount:.1e} tCO2, consumption=${c_amount:.1e}")
 
         config_e = create_config_with_pulse(
             config_path, control_function, pulse_year, e_amount, 0.0, 0.0
@@ -340,34 +345,37 @@ def run_sensitivity_test(config_path, control_function, pulse_year,
         scc_result = compute_scc(W_baseline, W_e, W_c, e_amount, c_amount)
         scc_result['scale'] = scale
         results.append(scc_result)
-        print(f"  SCC = ${scc_result['SCC']:.2f}/tCO2")
 
-    # Print summary table
-    scc_values = [r['SCC'] for r in results]
-    scc_ref = scc_values[2]  # 1.0x is the reference
+        if not quiet:
+            print(f"  SCC = ${scc_result['SCC']:.2f}/tCO2")
 
-    print("\n" + "-" * 80)
-    print(f"{'Scale':>8} {'Emission':>14} {'Consumption':>14} {'m_E':>14} {'m_C':>14} {'SCC ($/tCO2)':>14} {'vs 1x':>8}")
-    print("-" * 80)
-    for r in results:
-        pct_diff = (r['SCC'] / scc_ref - 1.0) * 100.0
-        print(f"{r['scale']:>7.1f}x {r['scale']*emission_amount:>13.1e} {r['scale']*consumption_amount:>13.1e} "
-              f"{r['m_E']:>14.6e} {r['m_C']:>14.6e} {r['SCC']:>13.2f} {pct_diff:>+7.2f}%")
-    print("-" * 80)
+    if not quiet:
+        # Print summary table
+        scc_values = [r['SCC'] for r in results]
+        scc_ref = scc_values[1]  # 1.0x is the reference
 
-    max_deviation = max(abs(s / scc_ref - 1.0) * 100.0 for s in scc_values)
-    if max_deviation < 3.0:
-        print(f"Max deviation: {max_deviation:.2f}% -- PASS (in linear regime)")
-    elif max_deviation < 10.0:
-        print(f"Max deviation: {max_deviation:.2f}% -- WARNING (near edge of linear regime)")
-    else:
-        print(f"Max deviation: {max_deviation:.2f}% -- FAIL (nonlinear effects or numerical noise)")
+        print("\n" + "-" * 80)
+        print(f"{'Scale':>8} {'Emission':>14} {'Consumption':>14} {'m_E':>14} {'m_C':>14} {'SCC ($/tCO2)':>14} {'vs 1x':>8}")
+        print("-" * 80)
+        for r in results:
+            pct_diff = (r['SCC'] / scc_ref - 1.0) * 100.0
+            print(f"{r['scale']:>7.1f}x {r['scale']*emission_amount:>13.1e} {r['scale']*consumption_amount:>13.1e} "
+                  f"{r['m_E']:>14.6e} {r['m_C']:>14.6e} {r['SCC']:>13.2f} {pct_diff:>+7.2f}%")
+        print("-" * 80)
+
+        max_deviation = max(abs(s / scc_ref - 1.0) * 100.0 for s in scc_values)
+        if max_deviation < 3.0:
+            print(f"Max deviation: {max_deviation:.2f}% -- PASS (in linear regime)")
+        elif max_deviation < 10.0:
+            print(f"Max deviation: {max_deviation:.2f}% -- WARNING (near edge of linear regime)")
+        else:
+            print(f"Max deviation: {max_deviation:.2f}% -- FAIL (nonlinear effects or numerical noise)")
 
     return results
 
 
 def run_time_shift_test(config_path, control_function,
-                        emission_amount, consumption_amount):
+                        emission_amount, consumption_amount, quiet=False):
     """
     Run time-shift invariance test: SCC at multiple pulse years.
 
@@ -381,6 +389,8 @@ def run_time_shift_test(config_path, control_function,
         Emission pulse amount in tCO2
     consumption_amount : float
         Consumption pulse amount in $
+    quiet : bool
+        Suppress output if True
 
     Returns
     -------
@@ -389,15 +399,16 @@ def run_time_shift_test(config_path, control_function,
     """
     pulse_years = [2025, 2030, 2050, 2075, 2100]
 
-    print("\n" + "=" * 80)
-    print("TIME-SHIFT INVARIANCE TEST")
-    print("=" * 80)
-    print(f"\nEmission pulse: {emission_amount:.1e} tCO2")
-    print(f"Consumption pulse: ${consumption_amount:.1e}")
-    print(f"Pulse years: {pulse_years}")
+    if not quiet:
+        print("\n" + "=" * 80)
+        print("TIME-SHIFT INVARIANCE TEST")
+        print("=" * 80)
+        print(f"\nEmission pulse: {emission_amount:.1e} tCO2")
+        print(f"Consumption pulse: ${consumption_amount:.1e}")
+        print(f"Pulse years: {pulse_years}")
+        print("\nRunning baseline integration...")
 
     # Single baseline (shared)
-    print("\nRunning baseline integration...")
     config_baseline = create_config_with_pulse(
         config_path, control_function, 0.0, 0.0, 0.0, 0.0
     )
@@ -405,7 +416,8 @@ def run_time_shift_test(config_path, control_function,
 
     results = []
     for year in pulse_years:
-        print(f"\nPulse year {year}...")
+        if not quiet:
+            print(f"\nPulse year {year}...")
 
         config_e = create_config_with_pulse(
             config_path, control_function, year, emission_amount, 0.0, 0.0
@@ -420,25 +432,28 @@ def run_time_shift_test(config_path, control_function,
         scc_result = compute_scc(W_baseline, W_e, W_c, emission_amount, consumption_amount)
         scc_result['pulse_year'] = year
         results.append(scc_result)
-        print(f"  SCC = ${scc_result['SCC']:.2f}/tCO2")
 
-    # Print summary table
-    print("\n" + "-" * 80)
-    print(f"{'Year':>8} {'dW_emission':>14} {'dW_consumption':>14} {'m_E':>14} {'m_C':>14} {'SCC ($/tCO2)':>14}")
-    print("-" * 80)
-    for r in results:
-        print(f"{r['pulse_year']:>8.0f} {r['dW_emission']:>14.6e} {r['dW_consumption']:>14.6e} "
-              f"{r['m_E']:>14.6e} {r['m_C']:>14.6e} {r['SCC']:>13.2f}")
-    print("-" * 80)
+        if not quiet:
+            print(f"  SCC = ${scc_result['SCC']:.2f}/tCO2")
 
-    # Check for discontinuities
-    scc_values = [r['SCC'] for r in results]
-    for i in range(1, len(scc_values)):
-        jump = abs(scc_values[i] / scc_values[i-1] - 1.0) * 100.0
-        if jump > 50.0:
-            print(f"WARNING: Large jump between {pulse_years[i-1]} and {pulse_years[i]}: {jump:.1f}%")
+    if not quiet:
+        # Print summary table
+        print("\n" + "-" * 80)
+        print(f"{'Year':>8} {'dW_emission':>14} {'dW_consumption':>14} {'m_E':>14} {'m_C':>14} {'SCC ($/tCO2)':>14}")
+        print("-" * 80)
+        for r in results:
+            print(f"{r['pulse_year']:>8.0f} {r['dW_emission']:>14.6e} {r['dW_consumption']:>14.6e} "
+                  f"{r['m_E']:>14.6e} {r['m_C']:>14.6e} {r['SCC']:>13.2f}")
+        print("-" * 80)
 
-    print(f"\nSCC range: ${min(scc_values):.2f} - ${max(scc_values):.2f}/tCO2")
+        # Check for discontinuities
+        scc_values = [r['SCC'] for r in results]
+        for i in range(1, len(scc_values)):
+            jump = abs(scc_values[i] / scc_values[i-1] - 1.0) * 100.0
+            if jump > 50.0:
+                print(f"WARNING: Large jump between {pulse_years[i-1]} and {pulse_years[i]}: {jump:.1f}%")
+
+        print(f"\nSCC range: ${min(scc_values):.2f} - ${max(scc_values):.2f}/tCO2")
 
     return results
 
@@ -508,6 +523,131 @@ def save_results(all_results, output_path, baseline_path):
             writer.writerow(row)
 
 
+def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
+                                 consumption_amount=None, run_sensitivity=False,
+                                 quiet=False):
+    """
+    Core function to calculate SCC for a single directory.
+
+    Parameters
+    ----------
+    baseline_path : str
+        Path to baseline results directory
+    pulse_year : float
+        Year to apply pulses
+    emission_amount : float, optional
+        Emission pulse amount in tCO2 (default: from config)
+    consumption_amount : float, optional
+        Consumption pulse amount in $ (default: from config)
+    run_sensitivity : bool
+        Run sensitivity and time-shift tests
+    quiet : bool
+        Suppress output if True
+
+    Returns
+    -------
+    list of dict
+        All results (main + sensitivity + time_shift if requested)
+    """
+    # Load baseline
+    baseline = load_baseline(baseline_path)
+
+    # Load config to get pulse amounts from scalar_parameters
+    config = load_configuration(baseline['config_path'])
+
+    # Use provided values or read from config
+    if emission_amount is None:
+        emission_amount = config.scalar_params.amount_extra_emission
+    if consumption_amount is None:
+        consumption_amount = config.scalar_params.amount_extra_consumption
+
+    # Validate pulse amounts
+    if emission_amount <= 0.0:
+        raise ValueError(
+            f"amount_extra_emission must be > 0, got {emission_amount}. "
+            f"Set it in the JSON config or use --emission-amount"
+        )
+    if consumption_amount <= 0.0:
+        raise ValueError(
+            f"amount_extra_consumption must be > 0, got {consumption_amount}. "
+            f"Set it in the JSON config or use --consumption-amount"
+        )
+
+    # Create fixed control function
+    t_base = config.scalar_params.t_base
+    control_function = create_fixed_control_function(
+        baseline['t_values'],
+        baseline['f_values'],
+        baseline['s_values'],
+        t_base
+    )
+
+    # Run baseline scenario
+    config_baseline = create_config_with_pulse(
+        baseline['config_path'], control_function,
+        year_extra_emission=0.0, amount_extra_emission=0.0,
+        year_extra_consumption=0.0, amount_extra_consumption=0.0
+    )
+    W_baseline = run_scenario(config_baseline)
+
+    # Run emission pulse scenario
+    config_emission = create_config_with_pulse(
+        baseline['config_path'], control_function,
+        year_extra_emission=pulse_year, amount_extra_emission=emission_amount,
+        year_extra_consumption=0.0, amount_extra_consumption=0.0
+    )
+    W_emission = run_scenario(config_emission)
+
+    # Run consumption pulse scenario
+    config_consumption = create_config_with_pulse(
+        baseline['config_path'], control_function,
+        year_extra_emission=0.0, amount_extra_emission=0.0,
+        year_extra_consumption=pulse_year, amount_extra_consumption=consumption_amount
+    )
+    W_consumption = run_scenario(config_consumption)
+
+    # Compute SCC
+    results = compute_scc(
+        W_baseline, W_emission, W_consumption,
+        emission_amount, consumption_amount
+    )
+
+    # Add metadata
+    results['test_type'] = 'main'
+    results['pulse_year'] = pulse_year
+    results['emission_amount'] = emission_amount
+    results['consumption_amount'] = consumption_amount
+    results['baseline_path'] = baseline_path
+
+    # Collect all results
+    all_results = [results]
+
+    # Run sensitivity tests if requested
+    if run_sensitivity:
+        sensitivity_results = run_sensitivity_test(
+            baseline['config_path'], control_function,
+            pulse_year, emission_amount, consumption_amount, quiet=quiet
+        )
+        for r in sensitivity_results:
+            r['test_type'] = 'sensitivity'
+            r['pulse_year'] = pulse_year
+            r['emission_amount'] = emission_amount * r['scale']
+            r['consumption_amount'] = consumption_amount * r['scale']
+        all_results.extend(sensitivity_results)
+
+        time_shift_results = run_time_shift_test(
+            baseline['config_path'], control_function,
+            emission_amount, consumption_amount, quiet=quiet
+        )
+        for r in time_shift_results:
+            r['test_type'] = 'time_shift'
+            r['emission_amount'] = emission_amount
+            r['consumption_amount'] = consumption_amount
+        all_results.extend(time_shift_results)
+
+    return all_results
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Calculate Social Cost of Carbon using perturbation method',
@@ -536,173 +676,68 @@ Pulse amounts default to values in config scalar_parameters:
                         help='Output CSV path (default: scc_results.csv in baseline dir)')
     parser.add_argument('--sensitivity-test', action='store_true',
                         help='Run pulse-size sensitivity and time-shift invariance tests')
+    parser.add_argument('--quiet', action='store_true',
+                        help='Suppress most output (only show summary)')
 
     args = parser.parse_args()
 
-    # Load baseline
-    print("=" * 80)
-    print("SCC CALCULATION")
-    print("=" * 80)
-    print(f"\nLoading baseline from: {args.baseline}")
+    if not args.quiet:
+        print("=" * 80)
+        print("SCC CALCULATION")
+        print("=" * 80)
+        print(f"\nLoading baseline from: {args.baseline}")
 
-    baseline = load_baseline(args.baseline)
-    print(f"Config: {baseline['config_path']}")
-    print(f"Time range: {baseline['t_values'][0]:.0f} - {baseline['t_values'][-1]:.0f}")
-    print(f"Number of time points: {len(baseline['t_values'])}")
-
-    # Load config to get pulse amounts from scalar_parameters
-    config = load_configuration(baseline['config_path'])
-
-    # Use command line if specified, otherwise read from config
-    emission_amount = args.emission_amount
-    if emission_amount is None:
-        emission_amount = config.scalar_params.amount_extra_emission
-
-    consumption_amount = args.consumption_amount
-    if consumption_amount is None:
-        consumption_amount = config.scalar_params.amount_extra_consumption
-
-    # Validate pulse amounts
-    if emission_amount <= 0.0:
-        raise ValueError(
-            f"amount_extra_emission must be > 0, got {emission_amount}. "
-            f"Set it in the JSON config or use --emission-amount"
-        )
-    if consumption_amount <= 0.0:
-        raise ValueError(
-            f"amount_extra_consumption must be > 0, got {consumption_amount}. "
-            f"Set it in the JSON config or use --consumption-amount"
-        )
-
-    # Create fixed control function (convert calendar years to relative time)
-    t_base = config.scalar_params.t_base
-    control_function = create_fixed_control_function(
-        baseline['t_values'],
-        baseline['f_values'],
-        baseline['s_values'],
-        t_base
+    # Calculate SCC
+    all_results = calculate_scc_for_directory(
+        args.baseline,
+        args.pulse_year,
+        emission_amount=args.emission_amount,
+        consumption_amount=args.consumption_amount,
+        run_sensitivity=args.sensitivity_test,
+        quiet=args.quiet
     )
 
-    # Print pulse parameters
-    print(f"\nPulse year: {args.pulse_year}")
-    print(f"Emission pulse: {emission_amount:.2e} tCO2 ({emission_amount/1e9:.1f} GtCO2)")
-    print(f"Consumption pulse: ${consumption_amount:.2e} (${consumption_amount/1e9:.1f}B)")
+    # Get main result
+    main_result = all_results[0]
 
-    # Create configs for 3 scenarios
-    print("\n" + "-" * 80)
-    print("Running integrations...")
-    print("-" * 80)
+    if not args.quiet:
+        print("\n" + "=" * 80)
+        print("RESULTS")
+        print("=" * 80)
 
-    # Baseline (no pulse)
-    print("\n1. Baseline (no pulse)...")
-    config_baseline = create_config_with_pulse(
-        baseline['config_path'], control_function,
-        year_extra_emission=0.0, amount_extra_emission=0.0,
-        year_extra_consumption=0.0, amount_extra_consumption=0.0
-    )
-    print(f"   DEBUG: year_extra_emission={config_baseline.scalar_params.year_extra_emission}, amount={config_baseline.scalar_params.amount_extra_emission}")
-    W_baseline = run_scenario(config_baseline)
-    print(f"   W_baseline = {W_baseline:.10e}")
+        print("\nWelfare values:")
+        print(f"  W_baseline:     {main_result['W_baseline']:.10e}")
+        print(f"  W_emission:     {main_result['W_emission']:.10e}")
+        print(f"  W_consumption:  {main_result['W_consumption']:.10e}")
 
-    # Emission pulse
-    print(f"\n2. Emission pulse (+{emission_amount/1e9:.1f} GtCO2 at {args.pulse_year})...")
-    config_emission = create_config_with_pulse(
-        baseline['config_path'], control_function,
-        year_extra_emission=args.pulse_year, amount_extra_emission=emission_amount,
-        year_extra_consumption=0.0, amount_extra_consumption=0.0
-    )
-    print(f"   DEBUG: year_extra_emission={config_emission.scalar_params.year_extra_emission}, amount={config_emission.scalar_params.amount_extra_emission}")
-    W_emission = run_scenario(config_emission)
-    print(f"   W_emission = {W_emission:.10e}")
+        print("\nWelfare changes:")
+        check_e = "✓" if main_result['emission_check'] else "✗ UNEXPECTED"
+        check_c = "✓" if main_result['consumption_check'] else "✗ UNEXPECTED"
+        print(f"  ΔW_emission:    {main_result['dW_emission']:.6e}  {check_e} (should be negative)")
+        print(f"  ΔW_consumption: {main_result['dW_consumption']:.6e}  {check_c} (should be positive)")
 
-    # Consumption pulse
-    print(f"\n3. Consumption pulse (+${consumption_amount/1e9:.1f}B at {args.pulse_year})...")
-    config_consumption = create_config_with_pulse(
-        baseline['config_path'], control_function,
-        year_extra_emission=0.0, amount_extra_emission=0.0,
-        year_extra_consumption=args.pulse_year, amount_extra_consumption=consumption_amount
-    )
-    print(f"   DEBUG: year_extra_consumption={config_consumption.scalar_params.year_extra_consumption}, amount={config_consumption.scalar_params.amount_extra_consumption}")
-    W_consumption = run_scenario(config_consumption)
-    print(f"   W_consumption = {W_consumption:.10e}")
+        print("\nMarginal values:")
+        print(f"  m_E (∂W/∂E):    {main_result['m_E']:.6e}  welfare/tCO2")
+        print(f"  m_C (∂W/∂C):    {main_result['m_C']:.6e}  welfare/$")
 
-    # Compute SCC
-    results = compute_scc(
-        W_baseline, W_emission, W_consumption,
-        emission_amount, consumption_amount
-    )
+        print("\n" + "-" * 80)
+        check_scc = "✓" if main_result['scc_check'] else "✗ UNEXPECTED"
+        print(f"  SCC = ${main_result['SCC']:.2f}/tCO2  {check_scc}")
+        print("-" * 80)
 
-    # Add metadata
-    results['test_type'] = 'main'
-    results['pulse_year'] = args.pulse_year
-    results['emission_amount'] = emission_amount
-    results['consumption_amount'] = consumption_amount
-    results['baseline_path'] = args.baseline
-
-    # Collect all results for saving
-    all_results = [results]
-
-    # Print results
-    print("\n" + "=" * 80)
-    print("RESULTS")
-    print("=" * 80)
-
-    print("\nWelfare values:")
-    print(f"  W_baseline:     {results['W_baseline']:.10e}")
-    print(f"  W_emission:     {results['W_emission']:.10e}")
-    print(f"  W_consumption:  {results['W_consumption']:.10e}")
-
-    print("\nWelfare changes:")
-    check_e = "✓" if results['emission_check'] else "✗ UNEXPECTED"
-    check_c = "✓" if results['consumption_check'] else "✗ UNEXPECTED"
-    print(f"  ΔW_emission:    {results['dW_emission']:.6e}  {check_e} (should be negative)")
-    print(f"  ΔW_consumption: {results['dW_consumption']:.6e}  {check_c} (should be positive)")
-
-    print("\nMarginal values:")
-    print(f"  m_E (∂W/∂E):    {results['m_E']:.6e}  welfare/tCO2")
-    print(f"  m_C (∂W/∂C):    {results['m_C']:.6e}  welfare/$")
-
-    print("\n" + "-" * 80)
-    check_scc = "✓" if results['scc_check'] else "✗ UNEXPECTED"
-    print(f"  SCC = ${results['SCC']:.2f}/tCO2  {check_scc}")
-    print("-" * 80)
-
-    # Run sensitivity tests if requested and collect results
-    if args.sensitivity_test:
-        sensitivity_results = run_sensitivity_test(
-            baseline['config_path'], control_function,
-            args.pulse_year, emission_amount, consumption_amount
-        )
-        # Add metadata and test_type to sensitivity results
-        for r in sensitivity_results:
-            r['test_type'] = 'sensitivity'
-            r['pulse_year'] = args.pulse_year
-            r['emission_amount'] = emission_amount * r['scale']
-            r['consumption_amount'] = consumption_amount * r['scale']
-        all_results.extend(sensitivity_results)
-
-        time_shift_results = run_time_shift_test(
-            baseline['config_path'], control_function,
-            emission_amount, consumption_amount
-        )
-        # Add metadata and test_type to time-shift results
-        for r in time_shift_results:
-            r['test_type'] = 'time_shift'
-            r['emission_amount'] = emission_amount
-            r['consumption_amount'] = consumption_amount
-        all_results.extend(time_shift_results)
-
-    # Save all results
+    # Save results
     if args.output:
         output_path = args.output
     else:
         output_path = os.path.join(args.baseline, 'scc_results.csv')
 
     save_results(all_results, output_path, args.baseline)
-    print(f"\nResults saved to: {output_path}")
+
+    if not args.quiet:
+        print(f"\nResults saved to: {output_path}")
 
     # Return SCC for programmatic use
-    return results['SCC']
+    return main_result['SCC']
 
 
 if __name__ == '__main__':
