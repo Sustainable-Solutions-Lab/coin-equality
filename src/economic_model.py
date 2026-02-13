@@ -797,7 +797,7 @@ def calculate_tendencies(state, params,
 
 
         # aggregate utility
-        U = aggregate_utility 
+        U = aggregate_utility * L
         # pulse utility scaling is the adjustment to utility from the extra consumption pulse (if any)
 
         _timing_stats['climate_time'] += time.time() - t_before_climate
