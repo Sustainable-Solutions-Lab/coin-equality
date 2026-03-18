@@ -373,7 +373,7 @@ def y_net_of_F(F, Fmin, Fmax, y_gross,
     # Compute net income: Lorenz → Damage → Tax → Redistribution (untaxed)
     y_net_F = y_gross * dLdF * (1.0 - omega_prev_F) * (1.0 - uniform_tax_rate) + uniform_redistribution
 
-    return y_net_F
+    return float(y_net_F[0]) if is_scalar else y_net_F
 
 
 #========================================================================================
