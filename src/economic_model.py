@@ -1061,9 +1061,6 @@ def integrate_model(config, store_detailed_output=True):
             'Fi_edges': (xi_edges + 1.0) / 2.0,
         })
 
-    # Initialize mu ceiling for rate-of-change constraint
-    mu_ceiling = sp.mu_max_initial
-
     # Initialize mu_prev for soft abatement increase constraint
     mu_prev = sp.mu_max_initial
 
@@ -1071,9 +1068,6 @@ def integrate_model(config, store_detailed_output=True):
     for i, t in enumerate(t_array):
         # Evaluate time-dependent parameters at current time
         params = evaluate_params_at_time(t, config)
-
-        # Rate-of-change constraint on μ: ceiling starts at mu_max_initial, grows by max_mu_increase_rate per year
-        params['mu_max'] = mu_ceiling
 
         # Pass dt for extra emission pulse timing
         params['dt'] = dt
@@ -1092,9 +1086,6 @@ def integrate_model(config, store_detailed_output=True):
                                       Fmin_prev, Fmax_prev,
                                       Omega_Omega_base_ratio_prev,
                                       xi, xi_edges, wi, store_detailed_output)
-
-        # Update mu ceiling for next timestep: grows from actual mu by max_mu_increase_rate
-        mu_ceiling = outputs['mu'] + sp.max_mu_increase_rate * dt
 
         # Update mu_prev for soft abatement increase penalty
         mu_prev = outputs['mu']
