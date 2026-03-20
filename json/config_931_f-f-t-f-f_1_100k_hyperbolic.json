@@ -93,8 +93,8 @@
         "_mu_max_initial": "Initial ceiling on abatement fraction mu at t=0 (5% current abatement)",
         "mu_increase_rate_soft_max": 0.02,
         "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
-        "mu_increase_rate_hard_max": 0.1,
-        "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (10% per year)"
+        "mu_increase_rate_hard_max": 0.03,
+        "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (3% per year)"
     },
     "time_functions": {
         "_description": "Time-dependent exogenous functions",
