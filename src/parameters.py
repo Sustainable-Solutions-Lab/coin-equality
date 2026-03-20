@@ -346,11 +346,7 @@ class ScalarParameters:
         so they can be parameterized for relative time (0 = base year).
         Default: 2020.0
     mu_max_initial : float
-        Ceiling on abatement fraction μ at t=0. Combined with max_mu_increase_rate,
-        this implements a rate-of-change constraint on μ.
-        Default: INVERSE_EPSILON (unconstrained)
-    max_mu_increase_rate : float
-        Maximum annual increase in μ (absolute, not relative).
+        Ceiling on abatement fraction μ at t=0.
         Default: INVERSE_EPSILON (unconstrained)
     mu_increase_rate_soft_max : float
         Relative rate of mu increase below which no cost penalty applies.
@@ -360,10 +356,6 @@ class ScalarParameters:
         Relative rate of mu increase at which abatement cost becomes infinite.
         Activates hyperbolic cost extension. Must be > mu_increase_rate_soft_max.
         Default: INVERSE_EPSILON (disabled)
-    use_mu_up : bool
-        DEPRECATED/IGNORED. Kept so existing JSON configs load without error.
-    mu_up_schedule : list
-        DEPRECATED/IGNORED. Kept so existing JSON configs load without error.
     """
     alpha: float
     delta: float
@@ -388,14 +380,10 @@ class ScalarParameters:
     Ecum_initial: float = 0.0  # Default to zero (no prior emissions)
     # Rate-of-change constraint on μ
     mu_max_initial: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    max_mu_increase_rate: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     # Soft abatement increase constraint (cost extension above mu_soft)
     mu_increase_rate_soft_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     # Hyperbolic cost extension: MAC → ∞ at mu_increase_rate_hard_max
     mu_increase_rate_hard_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    # Deprecated fields (kept so existing JSON configs load without error)
-    use_mu_up: bool = False
-    mu_up_schedule: list = None
     # Extra emission pulse parameters (for sensitivity analysis)
     year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
     amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
@@ -404,14 +392,12 @@ class ScalarParameters:
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
 
     def __post_init__(self):
-        """Set defaults for mu_max and max_mu_increase_rate if not provided."""
+        """Set defaults for mu_max and mu rate constraints if not provided."""
         from src.constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
         if self.mu_max_initial is None:
             object.__setattr__(self, 'mu_max_initial', INVERSE_EPSILON)
-        if self.max_mu_increase_rate is None:
-            object.__setattr__(self, 'max_mu_increase_rate', INVERSE_EPSILON)
         if self.mu_increase_rate_soft_max is None:
             object.__setattr__(self, 'mu_increase_rate_soft_max', INVERSE_EPSILON)
         if self.mu_increase_rate_hard_max is None:
