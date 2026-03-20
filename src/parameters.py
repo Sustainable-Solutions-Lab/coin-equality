@@ -352,6 +352,14 @@ class ScalarParameters:
     max_mu_increase_rate : float
         Maximum annual increase in μ (absolute, not relative).
         Default: INVERSE_EPSILON (unconstrained)
+    mu_increase_rate_soft_max : float
+        Relative rate of mu increase below which no cost penalty applies.
+        When mu grows faster than this rate, cost extension kicks in.
+        Default: INVERSE_EPSILON (no penalty)
+    mu_increase_rate_hard_max : float
+        Relative rate of mu increase at which abatement cost becomes infinite.
+        Activates hyperbolic cost extension. Must be > mu_increase_rate_soft_max.
+        Default: INVERSE_EPSILON (disabled)
     use_mu_up : bool
         DEPRECATED/IGNORED. Kept so existing JSON configs load without error.
     mu_up_schedule : list
@@ -381,6 +389,10 @@ class ScalarParameters:
     # Rate-of-change constraint on μ
     mu_max_initial: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     max_mu_increase_rate: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
+    # Soft abatement increase constraint (cost extension above mu_soft)
+    mu_increase_rate_soft_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
+    # Hyperbolic cost extension: MAC → ∞ at mu_increase_rate_hard_max
+    mu_increase_rate_hard_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     # Deprecated fields (kept so existing JSON configs load without error)
     use_mu_up: bool = False
     mu_up_schedule: list = None
@@ -400,6 +412,10 @@ class ScalarParameters:
             object.__setattr__(self, 'mu_max_initial', INVERSE_EPSILON)
         if self.max_mu_increase_rate is None:
             object.__setattr__(self, 'max_mu_increase_rate', INVERSE_EPSILON)
+        if self.mu_increase_rate_soft_max is None:
+            object.__setattr__(self, 'mu_increase_rate_soft_max', INVERSE_EPSILON)
+        if self.mu_increase_rate_hard_max is None:
+            object.__setattr__(self, 'mu_increase_rate_hard_max', INVERSE_EPSILON)
 
 
 @dataclass
@@ -773,6 +789,11 @@ def evaluate_params_at_time(t, config):
         params['Eland'] = tf['Eland'](t_relative)
     else:
         params['Eland'] = 0.0  # No land emissions
+
+    # Soft abatement increase constraint parameters
+    params['mu_increase_rate_soft_max'] = sp.mu_increase_rate_soft_max
+    params['mu_max_initial'] = sp.mu_max_initial
+    params['mu_increase_rate_hard_max'] = sp.mu_increase_rate_hard_max
 
     # Extra emission/consumption pulse parameters
     params['year_extra_emission'] = sp.year_extra_emission

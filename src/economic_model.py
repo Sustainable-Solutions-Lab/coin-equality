@@ -5,6 +5,7 @@ This module implements the Solow-Swann growth model with climate damage
 and emissions abatement costs.
 """
 
+import math
 import numpy as np
 import time
 from scipy.special import roots_legendre
@@ -276,6 +277,10 @@ def calculate_tendencies(state, params,
     amount_extra_consumption = params['amount_extra_consumption']
     Eland = params['Eland']
     dt = params['dt']
+    mu_prev = params['mu_prev']
+    mu_increase_rate_soft_max = params['mu_increase_rate_soft_max']
+    mu_max_initial = params['mu_max_initial']
+    mu_increase_rate_hard_max = params['mu_increase_rate_hard_max']
 
     # Validate Gini coefficient for empirical Lorenz
     if use_empirical_lorenz and gini > EMPIRICAL_LORENZ_BASE_GINI:
@@ -387,6 +392,8 @@ def calculate_tendencies(state, params,
         lambda_abate = 0.0
         y_net = 0.0
         mu = 0.0
+        mu_soft = INVERSE_EPSILON
+        mu_hard = INVERSE_EPSILON
         U = NEG_BIGNUM
         e = 0.0
         eland = 0.0
@@ -775,9 +782,37 @@ def calculate_tendencies(state, params,
         # Eq 2.1: Potential emissions per capita (unabated), including land emissions
         epot = sigma * y_gross * emission_ratio + eland
 
-        # Eq 1.6: Abatement fraction (compute uncapped value first)
+        # Eq 1.6: Abatement fraction with soft rate-of-change constraint
+        # Compute mu_soft: threshold above which cost extension applies
+        # Loophole fix: baseline never drops below mu_max_initial
+        mu_base = max(mu_max_initial, mu_prev)
+        if mu_base > EPSILON:
+            mu_soft = (1.0 + mu_increase_rate_soft_max * dt) * mu_base
+        else:
+            mu_soft = INVERSE_EPSILON
+
+        mu_hard = INVERSE_EPSILON
+
         if epot > 0 and abateCost_amount > 0:
-            mu = min(mu_max, (abateCost_amount * theta2 / (epot * theta1)) ** (1 / theta2))
+            # Check if spending exceeds DICE cost at mu_soft
+            cost_crit = (theta1 / theta2) * mu_soft ** theta2
+            spending_per_epot = abateCost_amount / epot
+
+            if spending_per_epot > cost_crit:
+                mac_crit = theta1 * mu_soft ** (theta2 - 1.0)
+
+                # Hyperbolic cost extension above mu_soft
+                # MAC(mu) = mac_crit * (mu_hard - mu_soft) / (mu_hard - mu)
+                # Cost(mu) = cost_crit + hyperbolic_scale * ln((mu_hard - mu_soft) / (mu_hard - mu))
+                # Inversion: mu = mu_hard - (mu_hard - mu_soft) * exp(-(spending_excess) / hyperbolic_scale)
+                mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
+                hyperbolic_scale = mac_crit * (mu_hard - mu_soft)
+                spending_excess = spending_per_epot - cost_crit
+                mu = mu_hard - (mu_hard - mu_soft) * math.exp(-spending_excess / hyperbolic_scale)
+                mu = min(mu_max, mu_hard - EPSILON, mu)
+            else:
+                # Standard DICE inversion (below mu_soft)
+                mu = min(mu_max, (abateCost_amount * theta2 / (epot * theta1)) ** (1.0 / theta2))
         else:
             mu = 0.0
 
@@ -850,6 +885,8 @@ def calculate_tendencies(state, params,
     results.update({
         'U': U,
         'mu': mu,
+        'mu_soft': mu_soft,
+        'mu_hard': mu_hard,
         'dK_dt': dK_dt,
         'dEcum_dt': e * L + E_extra,
     })
@@ -1000,6 +1037,8 @@ def integrate_model(config, store_detailed_output=True):
             'emission_ratio': np.zeros(n_steps),
             'E_extra': np.zeros(n_steps),
             'consumption_extra': np.zeros(n_steps),
+            'mu_soft': np.full(n_steps, INVERSE_EPSILON),
+            'mu_hard': np.full(n_steps, INVERSE_EPSILON),
         })
 
     # Always store time, state variables, and objective function variables
@@ -1025,6 +1064,9 @@ def integrate_model(config, store_detailed_output=True):
     # Initialize mu ceiling for rate-of-change constraint
     mu_ceiling = sp.mu_max_initial
 
+    # Initialize mu_prev for soft abatement increase constraint
+    mu_prev = sp.mu_max_initial
+
     # Time stepping loop
     for i, t in enumerate(t_array):
         # Evaluate time-dependent parameters at current time
@@ -1035,6 +1077,9 @@ def integrate_model(config, store_detailed_output=True):
 
         # Pass dt for extra emission pulse timing
         params['dt'] = dt
+
+        # Pass mu_prev for soft abatement increase penalty
+        params['mu_prev'] = mu_prev
 
         if store_detailed_output:
             results['params_list'].append(params)
@@ -1050,6 +1095,9 @@ def integrate_model(config, store_detailed_output=True):
 
         # Update mu ceiling for next timestep: grows from actual mu by max_mu_increase_rate
         mu_ceiling = outputs['mu'] + sp.max_mu_increase_rate * dt
+
+        # Update mu_prev for soft abatement increase penalty
+        mu_prev = outputs['mu']
 
         # Always store variables needed for objective function
         results['U'][i] = outputs['U']
@@ -1111,6 +1159,8 @@ def integrate_model(config, store_detailed_output=True):
             results['emission_ratio'][i] = outputs['emission_ratio']
             results['E_extra'][i] = outputs['E_extra']
             results['consumption_extra'][i] = outputs['consumption_extra']
+            results['mu_soft'][i] = outputs['mu_soft']
+            results['mu_hard'][i] = outputs['mu_hard']
 
         # Euler step: update state for next iteration (skip on last step)
         if i < n_steps - 1:
@@ -1204,7 +1254,16 @@ def create_derived_variables(results):
     savings = s_array * y_net
 
     # Compute marginal abatement cost
-    marginal_abatement_cost = theta1_array * (mu ** (theta2_array - 1.0))
+    # Below mu_soft: standard DICE MAC
+    # Above mu_soft: hyperbolic extension (MAC → ∞ at mu_hard)
+    mu_soft = results['mu_soft']
+    mu_hard = results['mu_hard']
+    mac_crit = theta1_array * mu_soft ** (theta2_array - 1.0)
+    marginal_abatement_cost = np.where(
+        mu <= mu_soft,
+        theta1_array * (mu ** (theta2_array - 1.0)),
+        mac_crit * (mu_hard - mu_soft) / np.maximum(mu_hard - mu, EPSILON)
+    )
 
     # ---------- Welfare-adjusted MAC (wMAC) for SCC consistency ----------
     # SCC "$ pulse" in calculate_tendencies scales everyone's consumption by the same factor,
