@@ -89,13 +89,11 @@
         "_year_extra_consumption": "Year to add extra consumption pulse (0 = disabled)",
         "amount_extra_consumption": 1000000.0,
         "_amount_extra_consumption": "Default consumption pulse for SCC calculation ($1M)",
-        "consumption_pulse_method": "D",
-        "_consumption_pulse_method": "Consumption pulse distribution: A=equal_per_capita, B=tax_system, C=proportional_consumption, D=proportional_income",
         "mu_max_initial": 0.05,
         "_mu_max_initial": "Initial ceiling on abatement fraction mu at t=0 (5% current abatement)",
         "mu_increase_rate_soft_max": 0.02,
         "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
-        "mu_increase_rate_hard_max": 0.10,
+        "mu_increase_rate_hard_max": 0.1,
         "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (10% per year)"
     },
     "time_functions": {
