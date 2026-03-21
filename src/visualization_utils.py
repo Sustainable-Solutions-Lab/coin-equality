@@ -113,7 +113,7 @@ def plot_timeseries(ax, case_data, variable, ylabel, title, show_legend=False,
         ax.xaxis.set_minor_locator(MultipleLocator(5))
 
     # Apply logarithmic scale for specific variables
-    log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount'}
+    log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount', 'AbateCost', 'marginal_abatement_cost', 'Climate_damage'}
     if variable in log_scale_vars:
         ax.set_yscale('log')
 
@@ -280,7 +280,7 @@ def create_results_report_pdf(case_data, output_pdf, config_filename=None):
             plt.tight_layout()
 
             # Apply zero-bound expansion AFTER layout (to prevent being overridden)
-            log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount'}
+            log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount', 'AbateCost', 'marginal_abatement_cost', 'Climate_damage'}
             for idx, (var_name, ylabel, title) in enumerate(page_vars):
                 ax_idx = idx + axes_offset
                 ax = axes[ax_idx]
@@ -686,7 +686,7 @@ def create_results_report_pdf_to_existing(case_data, pdf, t_min=None, t_max=None
         plt.tight_layout()
 
         # Apply zero-bound expansion AFTER layout (to prevent being overridden)
-        log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount'}
+        log_scale_vars = {'y_net', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount', 'AbateCost', 'marginal_abatement_cost', 'Climate_damage'}
         for idx, (var_name, ylabel, title) in enumerate(page_vars):
             ax_idx = idx + axes_offset
             ax = axes[ax_idx]
