@@ -8,7 +8,7 @@ and emissions abatement costs.
 import math
 import numpy as np
 import time
-from scipy.special import roots_legendre
+from scipy.special import roots_legendre, lambertw
 from src.distribution_utilities import (
     y_net_of_F,
     find_Fmax,
@@ -22,6 +22,47 @@ from src.distribution_utilities import (
 )
 from src.parameters import evaluate_params_at_time
 from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
+
+
+def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
+    """
+    Compute parameters for C^1-matched hyperbolic cost extension at mu_soft.
+
+    The hyperbolic extension ensures both value AND slope continuity at mu_soft:
+    - MAC(mu) = baseline_offset + curvature_scale / (mu_hard - mu)
+    - Cost(mu) = C_soft + baseline_offset * (mu - mu_soft)
+                 - curvature_scale * ln((mu_hard - mu) / gap)
+
+    Parameters
+    ----------
+    theta1 : float or ndarray
+        DICE abatement cost coefficient
+    theta2 : float or ndarray
+        DICE abatement cost exponent
+    mu_soft : float or ndarray
+        Transition point where hyperbolic extension begins
+    mu_hard : float or ndarray
+        Asymptote where MAC approaches infinity
+
+    Returns
+    -------
+    tuple
+        (gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft)
+        - gap: mu_hard - mu_soft
+        - mac_soft: MAC at mu_soft from DICE formula
+        - slope_soft: d(MAC)/d(mu) at mu_soft from DICE formula
+        - baseline_offset: constant term in hyperbolic MAC
+        - curvature_scale: coefficient of 1/(mu_hard - mu) term
+        - C_soft: total abatement cost at mu_soft from DICE formula
+    """
+    gap = mu_hard - mu_soft
+    mac_soft = theta1 * mu_soft ** (theta2 - 1.0)
+    slope_soft = theta1 * (theta2 - 1.0) * mu_soft ** (theta2 - 2.0)
+    baseline_offset = mac_soft - slope_soft * gap
+    curvature_scale = slope_soft * gap ** 2
+    C_soft = (theta1 / theta2) * mu_soft ** theta2
+    return gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft
+
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
     """
@@ -796,21 +837,33 @@ def calculate_tendencies(state, params,
         mu_hard = INVERSE_EPSILON
 
         if epot > 0 and abateCost_amount > 0:
-            # Check if spending exceeds DICE cost at mu_soft
-            cost_crit = (theta1 / theta2) * mu_soft ** theta2
+            # Compute mu_hard based on rate constraint
+            mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
+
+            # Get C^1-matched hyperbolic join parameters
+            gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft = \
+                compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard)
+
             spending_per_epot = abateCost_amount / epot
 
-            if spending_per_epot > cost_crit:
-                mac_crit = theta1 * mu_soft ** (theta2 - 1.0)
+            if spending_per_epot > C_soft:
+                # C^1-matched hyperbolic cost extension above mu_soft
+                # MAC(mu) = baseline_offset + curvature_scale / (mu_hard - mu)
+                # Cost(mu) = C_soft + baseline_offset * (mu - mu_soft)
+                #            - curvature_scale * ln((mu_hard - mu) / gap)
+                # Inversion uses Lambert W when baseline_offset != 0
+                spending_excess = spending_per_epot - C_soft
 
-                # Hyperbolic cost extension above mu_soft
-                # MAC(mu) = mac_crit * (mu_hard - mu_soft) / (mu_hard - mu)
-                # Cost(mu) = cost_crit + hyperbolic_scale * ln((mu_hard - mu_soft) / (mu_hard - mu))
-                # Inversion: mu = mu_hard - (mu_hard - mu_soft) * exp(-(spending_excess) / hyperbolic_scale)
-                mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
-                hyperbolic_scale = mac_crit * (mu_hard - mu_soft)
-                spending_excess = spending_per_epot - cost_crit
-                mu = mu_hard - (mu_hard - mu_soft) * math.exp(-spending_excess / hyperbolic_scale)
+                if abs(baseline_offset) > EPSILON:
+                    # Lambert W inversion for general case
+                    exponent_arg = (baseline_offset * gap - spending_excess) / curvature_scale
+                    z = (baseline_offset * gap / curvature_scale) * math.exp(exponent_arg)
+                    W_z = float(lambertw(z).real)
+                    mu = mu_hard - (curvature_scale / baseline_offset) * W_z
+                else:
+                    # Simpler exponential inversion when baseline_offset ≈ 0
+                    mu = mu_hard - gap * math.exp(-spending_excess / curvature_scale)
+
                 mu = min(mu_max, mu_hard - EPSILON, mu)
             else:
                 # Standard DICE inversion (below mu_soft)
@@ -1248,14 +1301,17 @@ def create_derived_variables(results):
 
     # Compute marginal abatement cost
     # Below mu_soft: standard DICE MAC
-    # Above mu_soft: hyperbolic extension (MAC → ∞ at mu_hard)
+    # Above mu_soft: C^1-matched hyperbolic extension (MAC → ∞ at mu_hard)
     mu_soft = results['mu_soft']
     mu_hard = results['mu_hard']
-    mac_crit = theta1_array * mu_soft ** (theta2_array - 1.0)
+
+    gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft = \
+        compute_hyperbolic_join_params(theta1_array, theta2_array, mu_soft, mu_hard)
+
     marginal_abatement_cost = np.where(
         mu <= mu_soft,
         theta1_array * (mu ** (theta2_array - 1.0)),
-        mac_crit * (mu_hard - mu_soft) / np.maximum(mu_hard - mu, EPSILON)
+        baseline_offset + curvature_scale / np.maximum(mu_hard - mu, EPSILON)
     )
 
     # ---------- Welfare-adjusted MAC (wMAC) for SCC consistency ----------
