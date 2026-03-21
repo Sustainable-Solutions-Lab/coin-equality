@@ -57,7 +57,9 @@
         "mu_increase_rate_soft_max": 0.02,
         "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
         "mu_increase_rate_hard_max": 0.03,
-        "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (3% per year)"
+        "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (3% per year)",
+        "loose_epsilon": 1e-08,
+        "_loose_epsilon": "Convergence tolerance for root-finding in find_Fmax and find_Fmin"
     },
     "time_functions": {
         "_description": "Time-dependent exogenous functions",
@@ -137,9 +139,6 @@
         "_t_end": "Integrate for 400 years",
         "dt": 1.0,
         "_dt": "1-year time step (Euler method)",
-        "rtol": 1e-06,
-        "atol": 1e-09,
-        "_tolerances": "Reserved for future adaptive solvers",
         "plot_short_horizon": 100.0,
         "_plot_short_horizon": "Time horizon (years) for short-term detailed plots. Creates second PDF book with results from t_start to this time.",
         "n_quad": 32,
@@ -230,6 +229,8 @@
         "_algorithm": "LN_SBPLX (local derivative-free Subplex, default, robust for noisy objectives)",
         "_stopping_criteria": "NLopt stopping criteria. For f,s \u2208 [0,1], absolute tolerance makes more sense than relative.",
         "xtol_abs": 1e-08,
-        "_xtol_abs": "Absolute tolerance on control parameters (f,s values): stops when all |\u0394f|,|\u0394s| < 1e-8. Tighter than config_025 for better convergence."
+        "_xtol_abs": "Absolute tolerance on control parameters (f,s values): stops when all |\u0394f|,|\u0394s| < 1e-8. Tighter than config_025 for better convergence.",
+        "looser_epsilon": 1e-08,
+        "_looser_epsilon": "Perturbation size for numerical gradient computation via finite differences"
     }
 }

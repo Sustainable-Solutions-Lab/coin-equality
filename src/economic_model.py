@@ -21,7 +21,7 @@ from src.distribution_utilities import (
     stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, LOOSE_EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
+from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
     """
@@ -476,6 +476,7 @@ def calculate_tendencies(state, params,
                     Fmin_prev, Fmax_prev, xi_edges,
                     redistribution_amount, uniform_tax_rate,
                     use_empirical_lorenz,
+                    tol=params['loose_epsilon'],
                     initial_guess=Fmin_prev,
                 )
                 _timing_stats['find_Fmin_time'] += time.time() - t_before_fmin
@@ -512,6 +513,7 @@ def calculate_tendencies(state, params,
                     Fmin_prev, Fmax_prev, xi_edges,
                     redistribution_amount, abateCost_amount - consumption_extra ,
                     use_empirical_lorenz,
+                    tol=params['loose_epsilon'],
                     initial_guess=Fmax_prev,
                 )
                 _timing_stats['find_Fmax_time'] += time.time() - t_before_fmax

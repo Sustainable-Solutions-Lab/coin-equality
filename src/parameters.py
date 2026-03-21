@@ -15,7 +15,6 @@ and the run name (used for output directory naming).
 import json
 import numpy as np
 from dataclasses import dataclass
-from src.constants import LOOSE_EPSILON
 
 
 # =============================================================================
@@ -356,6 +355,9 @@ class ScalarParameters:
         Relative rate of mu increase at which abatement cost becomes infinite.
         Activates hyperbolic cost extension. Must be > mu_increase_rate_soft_max.
         Default: INVERSE_EPSILON (disabled)
+    loose_epsilon : float
+        Convergence tolerance for root-finding in find_Fmax and find_Fmin.
+        Default: 1e-8
     """
     alpha: float
     delta: float
@@ -390,6 +392,8 @@ class ScalarParameters:
     # Extra consumption pulse parameters (for sensitivity analysis)
     year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
+    # Convergence tolerance for root-finding (find_Fmax, find_Fmin)
+    loose_epsilon: float = 1e-8
 
     def __post_init__(self):
         """Set defaults for mu_max and mu rate constraints if not provided."""
@@ -420,10 +424,6 @@ class IntegrationParameters:
     n_quad : int
         Number of Gauss-Legendre quadrature points for income distribution integration.
         Higher values = more accurate but slower. Typical: 16 (testing), 32 (production), 64 (high precision).
-    rtol : float
-        Relative tolerance for ODE solver (reserved for future use)
-    atol : float
-        Absolute tolerance for ODE solver (reserved for future use)
     plot_short_horizon : float
         Time horizon (yr) for short-term detailed plots.
         Creates second PDF with results from t_start to plot_short_horizon.
@@ -432,8 +432,6 @@ class IntegrationParameters:
     t_end: float
     dt: float
     n_quad: int
-    rtol: float
-    atol: float
     plot_short_horizon: float
 
 
@@ -506,7 +504,7 @@ class OptimizationParameters:
     xtol_abs : float, optional
         Absolute tolerance on parameter changes.
         Stops when |Δx| < xtol_abs for all parameters.
-        Default: LOOSE_EPSILON (1e-10), which is appropriate for control parameters in [0,1].
+        Default: 1e-8, which is appropriate for control parameters in [0,1].
         If None, uses NLopt default (0.0 = disabled).
     n_points_final_f : int or list of float, optional
         Control points for f in final iteration. Can be:
@@ -548,6 +546,10 @@ class OptimizationParameters:
         When True, adjusts temporal spacing of control points while keeping values fixed.
         This allows optimizer to concentrate control points where changes matter most.
         Only applies to iterative refinement mode. Default: False (disabled)
+    looser_epsilon : float
+        Perturbation size for numerical gradient computation via finite differences.
+        Used in gradient-based optimization (LD_* algorithms).
+        Default: 1e-8
     """
     max_evaluations_initial: int
     max_evaluations_final: int
@@ -558,7 +560,7 @@ class OptimizationParameters:
     ftol_rel: float = None
     ftol_abs: float = None
     xtol_rel: float = None
-    xtol_abs: float = LOOSE_EPSILON
+    xtol_abs: float = 1e-8
     n_points_final_f: object = None  # int or list of float (explicit times in calendar years)
     n_points_initial_f: int = 2
     initial_guess_s: object = None  # list or float, enables dual optimization if present
@@ -567,6 +569,7 @@ class OptimizationParameters:
     bounds_f: list = None  # [min, max] for f, defaults to [0.0, 1.0]
     bounds_s: list = None  # [min, max] for s, defaults to [0.0, 1.0]
     optimize_time_points: bool = False
+    looser_epsilon: float = 1e-8  # Perturbation size for numerical gradients
 
     def __post_init__(self):
         """Validate optimization parameters."""
@@ -786,6 +789,7 @@ def evaluate_params_at_time(t, config):
     params['amount_extra_emission'] = sp.amount_extra_emission
     params['year_extra_consumption'] = sp.year_extra_consumption
     params['amount_extra_consumption'] = sp.amount_extra_consumption
+    params['loose_epsilon'] = sp.loose_epsilon
 
     # Dual control function evaluation returns (f, s) - uses relative time
     f, s = config.control_function(t_relative)
@@ -944,7 +948,7 @@ def load_configuration(config_path):
     - run_name: string identifier for this run
     - scalar_parameters: dict with all ScalarParameters fields
     - time_functions: dict with specs for A, L, sigma, theta1
-    - integration_parameters: dict with t_start, t_end, dt, rtol, atol
+    - integration_parameters: dict with t_start, t_end, dt, n_quad
     - optimization_parameters: dict with max_evaluations
     - control_function: dict with type and parameters
 

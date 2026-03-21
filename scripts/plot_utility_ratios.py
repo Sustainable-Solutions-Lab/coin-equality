@@ -42,7 +42,7 @@ from src.distribution_utilities import (
     L_empirical_lorenz,
     L_pareto,
 )
-from src.constants import EPSILON, LOOSE_EPSILON, EMPIRICAL_LORENZ_BASE_GINI
+from src.constants import EPSILON, EMPIRICAL_LORENZ_BASE_GINI
 
 DELTA_T_REPRESENTATIVE = 2.0
 
@@ -183,7 +183,7 @@ def apply_climate_damage_to_income_and_integrate(
             y_lorenz_F = dLdF_func(F)
             omega_F = Omega_base * y_lorenz_F ** (-damage_exponent)
             omega_F = scale * omega_F
-            omega_F = np.clip(omega_F, 0.0, 1.0 - LOOSE_EPSILON)
+            omega_F = np.clip(omega_F, 0.0, 1.0 - 1e-8)
             y_damaged_F = y_lorenz_F * (1.0 - omega_F)
             return calculate_crra_utility(y_damaged_F, eta)
 
@@ -319,7 +319,7 @@ def compute_aggregate_utility_progressive_taxation(tax_rate_mean, gini, eta, use
     if debug:
         print(f'    Progressive tax: Fmax={Fmax:.10f}, fraction taxed={(1-Fmax):.10f}')
 
-    if Fmax < LOOSE_EPSILON:
+    if Fmax < 1e-8:
         if debug:
             print(f'    Fmax ≈ 0: Falling back to uniform taxation with uniform income')
         y_mean_after_tax = 1.0 - tax_rate_mean
@@ -428,8 +428,8 @@ def compute_tax_ratio_grid(gini_mesh, tax_rate_mesh, base_params):
 
     for i in range(n_rows):
         for j in range(n_cols):
-            gini = max(gini_mesh[i, j], 10.0 * LOOSE_EPSILON)
-            tax_rate = max(tax_rate_mesh[i, j], 10.0 * LOOSE_EPSILON)
+            gini = max(gini_mesh[i, j], 10.0 * 1e-8)
+            tax_rate = max(tax_rate_mesh[i, j], 10.0 * 1e-8)
 
             U_no_tax = compute_aggregate_utility(gini, eta, use_empirical_lorenz)
 

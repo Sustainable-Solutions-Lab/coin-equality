@@ -18,20 +18,6 @@ NEG_BIGNUM = -1e30
 # - Root finding bracket offsets
 EPSILON = 1e-12
 
-# Looser epsilon for iterative convergence and optimization tolerances
-# Used for:
-# - Convergence criterion in y_net iterative solver
-# - Default value for xtol_abs in optimization (control parameter convergence)
-# Provides practical precision without requiring machine precision
-LOOSE_EPSILON = 1e-6
-
-# Even looser epsilon for numerical gradient computation via finite differences
-# Used for:
-# - Perturbation size in gradient-based optimization (LD_* algorithms)
-# - Numerical differentiation via forward differences
-# Larger than LOOSE_EPSILON for better numerical stability in finite difference approximations
-LOOSER_EPSILON = 1e-6
-
 # Objective function scaling factor for numerical stability in gradient-based optimization
 # Used for:
 # - Scaling objective values from ~1.5e13 to ~1.5 for better numerical conditioning
@@ -50,7 +36,7 @@ INVERSE_EPSILON = 1.0 / EPSILON
 # - Initial capital stock convergence in integrate_model()
 # - Climate damage convergence in calculate_tendencies()
 # Set to 256 to allow slow but steady convergence during optimization
-MAX_ITERATIONS = 256
+MAX_ITERATIONS = 1024
 
 # N_QUAD removed - now specified in config.integration_params.n_quad
 # This enforces explicit configuration (no defaults per CLAUDE.md)

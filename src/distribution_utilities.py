@@ -14,7 +14,6 @@ import numpy as np
 from scipy.optimize import root_scalar, fsolve, newton
 from src.constants import (
     EPSILON,
-    LOOSE_EPSILON,
     MAX_ITERATIONS,
     EMPIRICAL_LORENZ_P0,
     EMPIRICAL_LORENZ_P1,
@@ -391,7 +390,7 @@ def find_Fmax(
     redistribution_amount,
     abateCost_amount,
     use_empirical_lorenz,
-    tol=LOOSE_EPSILON,
+    tol,
     initial_guess=None,
 ):
     """
@@ -445,7 +444,7 @@ def find_Fmax(
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz formulation; if False, use Pareto.
     tol : float, optional
-        Tolerance for root finding (default LOOSE_EPSILON).
+        Tolerance for root finding. Must be explicitly provided by caller.
     initial_guess : float, optional
         Initial guess for Fmax from previous timestep (speeds up convergence).
 
@@ -605,7 +604,7 @@ def find_Fmin(
     redistribution_amount,
     uniform_tax_rate,
     use_empirical_lorenz,
-    tol=LOOSE_EPSILON,
+    tol,
     initial_guess=None,
 ):
     """
@@ -658,7 +657,7 @@ def find_Fmin(
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz formulation; if False, use Pareto.
     tol : float, optional
-        Tolerance for root finding (default LOOSE_EPSILON).
+        Tolerance for root finding. Must be explicitly provided by caller.
     initial_guess : float, optional
         Initial guess for Fmin from previous timestep (speeds up convergence).
 

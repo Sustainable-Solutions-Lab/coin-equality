@@ -614,8 +614,8 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
-                eps = LOOSER_EPSILON
+                from src.constants import OBJECTIVE_SCALE
+                eps = self.base_config.optimization_params.looser_epsilon
                 for i in range(len(x)):
                     x_pert = x.copy()
                     x_pert[i] += eps
@@ -776,8 +776,8 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
-                eps = LOOSER_EPSILON
+                from src.constants import OBJECTIVE_SCALE
+                eps = self.base_config.optimization_params.looser_epsilon
                 for i in range(len(x)):
                     x_pert = x.copy()
                     # Use smaller perturbation if we're near the upper bound
@@ -1106,8 +1106,8 @@ class UtilityOptimizer:
 
             # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
             if grad.size > 0:
-                from src.constants import LOOSER_EPSILON, OBJECTIVE_SCALE
-                eps = LOOSER_EPSILON
+                from src.constants import OBJECTIVE_SCALE
+                eps = self.base_config.optimization_params.looser_epsilon
                 for i in range(len(x)):
                     x_pert = x.copy()
                     x_pert[i] += eps
