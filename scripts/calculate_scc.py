@@ -121,7 +121,7 @@ def load_baseline(baseline_path):
     }
 
 
-def create_fixed_control_function(t_values, f_values, s_values, t_base):
+def create_fixed_control_function(t_values, f_values, s_values, t_base, bounds_f, bounds_s):
     """
     Create a control function that interpolates fixed (f, s) trajectories.
 
@@ -130,11 +130,15 @@ def create_fixed_control_function(t_values, f_values, s_values, t_base):
     t_values : np.ndarray
         Time points (calendar years from results CSV)
     f_values : np.ndarray
-        Abatement fraction values at each time point
+        Control variable f values at each time point (log10(MAC) for MAC-based optimization)
     s_values : np.ndarray
         Savings rate values at each time point
     t_base : float
         Base year for converting calendar years to relative time
+    bounds_f : list
+        [min, max] bounds for f
+    bounds_s : list
+        [min, max] bounds for s
 
     Returns
     -------
@@ -149,8 +153,8 @@ def create_fixed_control_function(t_values, f_values, s_values, t_base):
     s_interp = PchipInterpolator(t_relative, s_values, extrapolate=True)
 
     def control_function(t):
-        f = float(np.clip(f_interp(t), 0.0, 1.0))
-        s = float(np.clip(s_interp(t), 0.0, 1.0))
+        f = float(np.clip(f_interp(t), bounds_f[0], bounds_f[1]))
+        s = float(np.clip(s_interp(t), bounds_s[0], bounds_s[1]))
         return f, s
 
     return control_function
@@ -609,13 +613,17 @@ def calculate_scc_for_directory(baseline_path, pulse_year, emission_amount=None,
             f"Set it in the JSON config or use --consumption-amount"
         )
 
-    # Create fixed control function
+    # Create fixed control function with bounds from config
     t_base = config.scalar_params.t_base
+    bounds_f = config.optimization_params.bounds_f if config.optimization_params.bounds_f is not None else [0.0, 1.0]
+    bounds_s = config.optimization_params.bounds_s if config.optimization_params.bounds_s is not None else [0.0, 1.0]
     control_function = create_fixed_control_function(
         baseline['t_values'],
         baseline['f_values'],
         baseline['s_values'],
-        t_base
+        t_base,
+        bounds_f,
+        bounds_s
     )
 
     # Run baseline scenario

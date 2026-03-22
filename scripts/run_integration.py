@@ -1,21 +1,28 @@
 """
-Run forward integration using control trajectories from optimization results.
+Run forward integration using control trajectories.
 
-Loads configuration and optimized control variables from an output directory,
-then runs a forward simulation with those exact controls. Useful for debugging
-and verifying optimization results.
+Two modes of operation:
+1. From optimization output: Load config and control trajectories from an output directory
+2. From JSON config: Use initial_guess_f and initial_guess_s as constant control values
 
 Usage:
-    python run_integration.py <output_directory> [--param.path value ...]
+    python run_integration.py <path> [--param.path value ...]
 
 Arguments:
-    output_directory: Path to optimization output directory containing JSON config
-                     and results CSV file
+    path: Either:
+          - Path to optimization output directory (containing JSON config and results CSV)
+          - Path to JSON config file (uses initial guesses as constant controls)
     --param.path value: Override configuration parameters (e.g., --scalar_parameters.eta 1.45)
 
-Example:
+Examples:
+    # From optimization output directory:
     python run_integration.py data/output/config_010_t-t-t-f-f_10_1_1000_el_20260105-165554
-    python run_integration.py data/output/config_010_f-f-f-f-f_10_1_1000_el_20260105-165554 --scalar_parameters.income_redistribution true
+
+    # From JSON config file (uses initial_guess_f and initial_guess_s):
+    python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json
+
+    # With parameter overrides:
+    python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json --scalar_parameters.eta 2.0
 """
 
 import sys
@@ -102,21 +109,26 @@ def apply_config_override(config_dict, key_path, value):
 
 def parse_arguments():
     """
-    Parse command line arguments including output directory and overrides.
+    Parse command line arguments including input path and overrides.
 
     Returns
     -------
     tuple
-        (output_dir, overrides_dict) where overrides_dict maps key paths to values
+        (input_path, overrides_dict) where input_path is directory or JSON file
     """
     parser = argparse.ArgumentParser(
         description='Run forward integration with optional parameter overrides',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # From optimization output directory:
   python run_integration.py data/output/config_010_f-f-f-f-f_10_1_1000_el_20260105-165554
-  python run_integration.py data/output/config_010_f-f-f-f-f_10_1_1000_el_20260105-165554 --scalar_parameters.income_redistribution true
-  python run_integration.py data/output/config_010_f-f-f-f-f_10_1_1000_el_20260105-165554 --scalar_parameters.eta 1.45 --run_name "test_run"
+
+  # From JSON config file (uses initial_guess_f and initial_guess_s):
+  python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json
+
+  # With parameter overrides:
+  python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json --scalar_parameters.eta 1.45
 
 Override format:
   --key.subkey.subsubkey value
@@ -132,7 +144,7 @@ Common overrides:
         """
     )
 
-    parser.add_argument('output_directory', help='Path to optimization output directory')
+    parser.add_argument('input_path', help='Path to output directory or JSON config file')
 
     # Use parse_known_args to allow arbitrary --key value pairs
     args, unknown = parser.parse_known_args()
@@ -153,7 +165,37 @@ Common overrides:
         else:
             raise ValueError(f"Unexpected argument '{arg}'. Overrides must start with '--'")
 
-    return args.output_directory, overrides
+    return args.input_path, overrides
+
+
+def create_constant_control_function(initial_f, initial_s, bounds_f, bounds_s):
+    """
+    Create a control function that returns constant values.
+
+    Parameters
+    ----------
+    initial_f : float
+        Constant value for f (log10(MAC) for MAC-based optimization)
+    initial_s : float
+        Constant value for s (savings rate)
+    bounds_f : list
+        [min, max] bounds for f
+    bounds_s : list
+        [min, max] bounds for s
+
+    Returns
+    -------
+    callable
+        Control function f,s = control(t)
+    """
+    # Clip to bounds
+    f_value = np.clip(initial_f, bounds_f[0], bounds_f[1])
+    s_value = np.clip(initial_s, bounds_s[0], bounds_s[1])
+
+    def control_function(t):
+        return f_value, s_value
+
+    return control_function
 
 
 def load_control_trajectory_from_csv(csv_path):
@@ -182,7 +224,7 @@ def load_control_trajectory_from_csv(csv_path):
     return t_values, f_values, s_values
 
 
-def create_control_function_from_csv(t_values, f_values, s_values):
+def create_control_function_from_csv(t_values, f_values, s_values, bounds_f, bounds_s):
     """
     Create control function from CSV data using PCHIP interpolation.
 
@@ -191,9 +233,13 @@ def create_control_function_from_csv(t_values, f_values, s_values):
     t_values : array
         Time points
     f_values : array
-        Abatement fraction values
+        Control variable f values (log10(MAC) for MAC-based optimization)
     s_values : array
         Savings rate values
+    bounds_f : list
+        [min, max] bounds for f
+    bounds_s : list
+        [min, max] bounds for s
 
     Returns
     -------
@@ -206,7 +252,7 @@ def create_control_function_from_csv(t_values, f_values, s_values):
     def control_function(t):
         f = f_interpolator(t)
         s = s_interpolator(t)
-        return np.clip(f, 0.0, 1.0), np.clip(s, 0.0, 1.0)
+        return np.clip(f, bounds_f[0], bounds_f[1]), np.clip(s, bounds_s[0], bounds_s[1])
 
     return control_function
 
@@ -259,22 +305,33 @@ def find_files_in_output_dir(output_dir):
 
 def main():
     # Parse command line arguments
-    output_dir, overrides = parse_arguments()
+    input_path, overrides = parse_arguments()
 
-    if not os.path.isdir(output_dir):
-        print(f"Error: Directory not found: {output_dir}")
+    # Determine if input is a JSON file or a directory
+    is_json_file = input_path.endswith('.json') and os.path.isfile(input_path)
+    is_directory = os.path.isdir(input_path)
+
+    if not is_json_file and not is_directory:
+        print(f"Error: Path not found or invalid: {input_path}")
+        print("  Expected either a JSON config file or an output directory")
         sys.exit(1)
 
     print(f'=' * 80)
-    print(f'COIN_equality Forward Integration from Optimized Controls')
-    print(f'=' * 80)
-    print(f'Source directory: {output_dir}\n')
-
-    # Find config and CSV files
-    print('Searching for files...')
-    config_path, csv_path = find_files_in_output_dir(output_dir)
-    print(f'  Config file: {os.path.basename(config_path)}')
-    print(f'  Results CSV: {os.path.basename(csv_path)}')
+    if is_json_file:
+        print(f'COIN_equality Forward Integration from JSON Config')
+        print(f'=' * 80)
+        print(f'Config file: {input_path}')
+        print(f'Mode: Constant controls (using initial_guess_f and initial_guess_s)\n')
+        config_path = input_path
+    else:
+        print(f'COIN_equality Forward Integration from Optimized Controls')
+        print(f'=' * 80)
+        print(f'Source directory: {input_path}\n')
+        # Find config and CSV files
+        print('Searching for files...')
+        config_path, csv_path = find_files_in_output_dir(input_path)
+        print(f'  Config file: {os.path.basename(config_path)}')
+        print(f'  Results CSV: {os.path.basename(csv_path)}')
 
     # Load base configuration from JSON file
     with open(config_path, 'r') as f:
@@ -306,26 +363,47 @@ def main():
     print(f'  Time span: {config.integration_params.t_start} to {config.integration_params.t_end} yr')
     print(f'  Time step: {config.integration_params.dt} yr')
 
-    # Load control trajectories from CSV
-    print(f'\nLoading control trajectories from CSV...')
-    t_csv, f_csv, s_csv = load_control_trajectory_from_csv(csv_path)
-    print(f'  Time points: {len(t_csv)}')
-    print(f'  f range: [{f_csv.min():.6f}, {f_csv.max():.6f}]')
-    print(f'  s range: [{s_csv.min():.6f}, {s_csv.max():.6f}]')
+    # Get bounds from config
+    bounds_f = config.optimization_params.bounds_f if config.optimization_params.bounds_f is not None else [0.0, 1.0]
+    bounds_s = config.optimization_params.bounds_s if config.optimization_params.bounds_s is not None else [0.0, 1.0]
 
-    # Show sample values
-    print(f'\n  Sample control values:')
-    sample_indices = [0, len(t_csv)//4, len(t_csv)//2, 3*len(t_csv)//4, -1]
-    for idx in sample_indices:
-        print(f'    t={t_csv[idx]:6.1f} yr: f={f_csv[idx]:.6f}, s={s_csv[idx]:.6f}')
+    if is_json_file:
+        # Use constant controls from initial guesses
+        initial_f = config.optimization_params.initial_guess_f
+        initial_s = config.optimization_params.initial_guess_s
 
-    # Create control function
-    print(f'\nCreating control function using PCHIP interpolation...')
-    control_function = create_control_function_from_csv(t_csv, f_csv, s_csv)
+        print(f'\nUsing constant control values from config:')
+        print(f'  initial_guess_f: {initial_f}')
+        print(f'  initial_guess_s: {initial_s}')
+        print(f'  bounds_f: {bounds_f}')
+        print(f'  bounds_s: {bounds_s}')
+
+        print(f'\nCreating constant control function...')
+        control_function = create_constant_control_function(initial_f, initial_s, bounds_f, bounds_s)
+    else:
+        # Load control trajectories from CSV
+        print(f'\nLoading control trajectories from CSV...')
+        t_csv, f_csv, s_csv = load_control_trajectory_from_csv(csv_path)
+        print(f'  Time points: {len(t_csv)}')
+        print(f'  f range: [{f_csv.min():.6f}, {f_csv.max():.6f}]')
+        print(f'  s range: [{s_csv.min():.6f}, {s_csv.max():.6f}]')
+
+        # Show sample values
+        print(f'\n  Sample control values:')
+        sample_indices = [0, len(t_csv)//4, len(t_csv)//2, 3*len(t_csv)//4, -1]
+        for idx in sample_indices:
+            print(f'    t={t_csv[idx]:6.1f} yr: f={f_csv[idx]:.6f}, s={s_csv[idx]:.6f}')
+
+        # Create control function with bounds from config
+        print(f'\nCreating control function using PCHIP interpolation...')
+        print(f'  bounds_f: {bounds_f}')
+        print(f'  bounds_s: {bounds_s}')
+        control_function = create_control_function_from_csv(t_csv, f_csv, s_csv, bounds_f, bounds_s)
 
     # Create new configuration with loaded controls
+    run_suffix = "_const" if is_json_file else "_forward"
     forward_config = ModelConfiguration(
-        run_name=f"{config.run_name}_forward",
+        run_name=f"{config.run_name}{run_suffix}",
         scalar_params=config.scalar_params,
         time_functions=config.time_functions,
         integration_params=config.integration_params,
