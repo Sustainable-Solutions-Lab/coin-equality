@@ -70,4 +70,9 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
     EMPIRICAL_LORENZ_W3 / (EMPIRICAL_LORENZ_P3 + 1.0)
 )
 
+# Non-distribution fraction for abatement/redistribution split
+# Setting to 1.0 means all policy spending goes to abatement (no redistribution)
+# To resurrect redistribution functionality, make this a config parameter < 1.0
+NON_DISTRIBUTION_FRACTION = 1.0
+
 

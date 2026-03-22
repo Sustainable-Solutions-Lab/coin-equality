@@ -21,7 +21,7 @@ from src.distribution_utilities import (
     stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON
+from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, NON_DISTRIBUTION_FRACTION
 
 
 def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
@@ -62,6 +62,59 @@ def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
     curvature_scale = slope_soft * gap ** 2
     C_soft = (theta1 / theta2) * mu_soft ** theta2
     return gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft
+
+
+def invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max):
+    """
+    Invert marginal abatement cost to get abatement fraction mu.
+
+    Below mu_soft (standard DICE): mu = (MAC/theta1)^(1/(theta2-1))
+    Above mu_soft (hyperbolic):    mu = mu_hard - curvature_scale/(MAC - baseline_offset)
+
+    Fails fast if computed mu >= mu_hard.
+
+    Parameters
+    ----------
+    MAC : float
+        Marginal abatement cost ($/tCO2)
+    theta1 : float
+        DICE abatement cost coefficient
+    theta2 : float
+        DICE abatement cost exponent
+    mu_soft : float
+        Transition point where hyperbolic extension begins
+    mu_hard : float
+        Asymptote where MAC approaches infinity
+    mu_max : float
+        Maximum allowed abatement fraction (cap on mu)
+
+    Returns
+    -------
+    tuple
+        (mu, gap, mac_soft, baseline_offset, curvature_scale, C_soft)
+    """
+    gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft = \
+        compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard)
+
+    if MAC <= mac_soft:
+        # Standard DICE inversion
+        mu = (MAC / theta1) ** (1.0 / (theta2 - 1.0))
+    else:
+        # Hyperbolic inversion: MAC = baseline_offset + curvature_scale/(mu_hard - mu)
+        # Solve for mu: mu = mu_hard - curvature_scale/(MAC - baseline_offset)
+        mu = mu_hard - curvature_scale / (MAC - baseline_offset)
+
+    # Fail-fast: mu must be strictly less than mu_hard
+    if mu >= mu_hard - EPSILON:
+        raise RuntimeError(
+            f"MAC={MAC:.2f} yields mu={mu:.6f} >= mu_hard={mu_hard:.6f}. "
+            f"MAC is too high for current rate constraint."
+        )
+
+    # Apply mu_max cap
+    mu = min(mu_max, mu)
+
+    return mu, gap, mac_soft, baseline_offset, curvature_scale, C_soft
 
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
@@ -306,7 +359,8 @@ def calculate_tendencies(state, params,
     fract_gdp = params['fract_gdp']
     gini = params['gini']
     use_empirical_lorenz = params['use_empirical_lorenz']
-    f = params['f']
+    # f is now log10 of marginal abatement cost
+    log10_mac = params['f']
     y_damage_distribution_exponent = params['y_damage_distribution_exponent']
     y_net_reference = params['y_net_reference']
     psi1 = params['psi1']
@@ -451,20 +505,68 @@ def calculate_tendencies(state, params,
     else:
         # Economy exists - proceed with calculations
 
-        available_for_redistribution_and_abatement = fract_gdp *  y_damaged_calc 
-        
-        if income_redistribution:
-            redistribution_amount = (1 - f) * available_for_redistribution_and_abatement
-        else:
-            redistribution_amount = 0.0
+        # ============================================================================
+        # MAC-based optimization: compute mu and abateCost_amount from log10(MAC)
+        # This must happen BEFORE income distribution calculations that depend on
+        # abateCost_amount (tax_amount, uniform_tax_rate, find_Fmax)
+        # ============================================================================
 
-        abateCost_amount = f * available_for_redistribution_and_abatement # per capita
-        lambda_abate = abateCost_amount / y_damaged_calc # fraction of damaged production
+        # Land emissions per capita (Eland is total land emissions from time function)
+        eland = Eland / L
+
+        # Eq 2.1: Potential emissions per capita (unabated), including land emissions
+        epot = sigma * y_gross * emission_ratio + eland
+
+        # Compute mu_soft and mu_hard based on rate constraints
+        # Loophole fix: baseline never drops below mu_max_initial
+        mu_base = max(mu_max_initial, mu_prev)
+        if mu_base > EPSILON:
+            mu_soft = (1.0 + mu_increase_rate_soft_max * dt) * mu_base
+        else:
+            mu_soft = INVERSE_EPSILON
+        mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
+
+        # Convert log10(MAC) to linear MAC
+        MAC = 10.0 ** log10_mac
+
+        if epot > EPSILON and MAC > EPSILON:
+            # Invert MAC to get mu (fail-fast if mu >= mu_hard)
+            mu, gap, mac_soft, baseline_offset, curvature_scale, C_soft = \
+                invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max)
+
+            # Compute abatement cost from mu
+            if mu <= mu_soft:
+                # Standard DICE cost
+                abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
+            else:
+                # Hyperbolic cost extension
+                abateCost_amount = C_soft * epot + baseline_offset * (mu - mu_soft) * epot \
+                                  - curvature_scale * math.log((mu_hard - mu) / gap) * epot
+        else:
+            mu = 0.0
+            abateCost_amount = 0.0
+            gap = mu_hard - mu_soft
+            mac_soft = 0.0
+            baseline_offset = 0.0
+            curvature_scale = 0.0
+
+        # Compute lambda_abate from the derived abateCost_amount
+        lambda_abate = abateCost_amount / y_damaged_calc if y_damaged_calc > EPSILON else 0.0
 
         # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
         # y_net (aggregate): gross production net of climate damage and abatement cost
         # Note: consumption + savings = y_net
         y_net = (1.0 - lambda_abate) * y_damaged_calc
+
+        # ============================================================================
+        # Redistribution calculation using NON_DISTRIBUTION_FRACTION
+        # With NON_DISTRIBUTION_FRACTION = 1.0, all policy spending goes to abatement
+        # ============================================================================
+        if income_redistribution:
+            # When NON_DISTRIBUTION_FRACTION = 1.0, redistribution_amount = 0
+            redistribution_amount = (1.0 - NON_DISTRIBUTION_FRACTION) * fract_gdp * y_damaged_calc
+        else:
+            redistribution_amount = 0.0
 
         # Find uniform redistribution amount
         if income_redistribution and income_dependent_redistribution_policy:
@@ -816,60 +918,9 @@ def calculate_tendencies(state, params,
         _timing_stats['damage_agg_time'] += time.time() - t_before_damage_agg
 
     #========================================================================================
-    # mitigation carbon climate
+    # Emissions and remaining calculations
+    # (mu, abateCost_amount, epot already computed at beginning of "Economy exists" section)
         t_before_climate = time.time()
-
-        # Land emissions per capita (Eland is total land emissions from time function)
-        eland = Eland / L
-
-        # Eq 2.1: Potential emissions per capita (unabated), including land emissions
-        epot = sigma * y_gross * emission_ratio + eland
-
-        # Eq 1.6: Abatement fraction with soft rate-of-change constraint
-        # Compute mu_soft: threshold above which cost extension applies
-        # Loophole fix: baseline never drops below mu_max_initial
-        mu_base = max(mu_max_initial, mu_prev)
-        if mu_base > EPSILON:
-            mu_soft = (1.0 + mu_increase_rate_soft_max * dt) * mu_base
-        else:
-            mu_soft = INVERSE_EPSILON
-
-        mu_hard = INVERSE_EPSILON
-
-        if epot > 0 and abateCost_amount > 0:
-            # Compute mu_hard based on rate constraint
-            mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
-
-            # Get C^1-matched hyperbolic join parameters
-            gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft = \
-                compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard)
-
-            spending_per_epot = abateCost_amount / epot
-
-            if spending_per_epot > C_soft:
-                # C^1-matched hyperbolic cost extension above mu_soft
-                # MAC(mu) = baseline_offset + curvature_scale / (mu_hard - mu)
-                # Cost(mu) = C_soft + baseline_offset * (mu - mu_soft)
-                #            - curvature_scale * ln((mu_hard - mu) / gap)
-                # Inversion uses Lambert W when baseline_offset != 0
-                spending_excess = spending_per_epot - C_soft
-
-                if abs(baseline_offset) > EPSILON:
-                    # Lambert W inversion for general case
-                    exponent_arg = (baseline_offset * gap - spending_excess) / curvature_scale
-                    z = (baseline_offset * gap / curvature_scale) * math.exp(exponent_arg)
-                    W_z = float(lambertw(z).real)
-                    mu = mu_hard - (curvature_scale / baseline_offset) * W_z
-                else:
-                    # Simpler exponential inversion when baseline_offset ≈ 0
-                    mu = mu_hard - gap * math.exp(-spending_excess / curvature_scale)
-
-                mu = min(mu_max, mu_hard - EPSILON, mu)
-            else:
-                # Standard DICE inversion (below mu_soft)
-                mu = min(mu_max, (abateCost_amount * theta2 / (epot * theta1)) ** (1.0 / theta2))
-        else:
-            mu = 0.0
 
         # Eq 2.3: CO2eq emissions per capita (after abatement) consider non-CO2 gases and land C emissions
         e = (1 - mu) * epot
@@ -883,12 +934,10 @@ def calculate_tendencies(state, params,
             E_extra = 0.0
 
         # Eq 1.10: Capital tendency
-        dK_dt = s * y_net * L - delta * K      
-
+        dK_dt = s * y_net * L - delta * K
 
         # aggregate utility
         U = aggregate_utility * L
-        # pulse utility scaling is the adjustment to utility from the extra consumption pulse (if any)
 
         _timing_stats['climate_time'] += time.time() - t_before_climate
 
