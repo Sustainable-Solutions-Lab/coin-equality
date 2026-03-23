@@ -723,7 +723,11 @@ def calculate_tendencies(state, params,
                 min_utility = (np.maximum(min_consumption, EPSILON) ** (1 - eta)) / (1 - eta)
 
             # Damage at this income level (for next timestep)
-            omega_Fmin = Omega_base * (min_y_net  / y_net_reference) ** (-y_damage_distribution_exponent)
+            # Protect against non-positive y_net which would produce NaN in power calculation
+            if min_y_net > EPSILON:
+                omega_Fmin = Omega_base * (min_y_net / y_net_reference) ** (-y_damage_distribution_exponent)
+            else:
+                omega_Fmin = 1.0 - EPSILON  # Maximum damage for zero/negative income
             omega_Fmin = np.clip(omega_Fmin, 0.0, 1.0 - EPSILON)
 
             # Contribution to aggregate utility (analytical: constant × width)
@@ -761,7 +765,11 @@ def calculate_tendencies(state, params,
                 max_utility = (np.maximum(max_consumption, EPSILON) ** (1 - eta)) / (1 - eta)
 
             # Damage at this income level (for next timestep)
-            omega_Fmax = Omega_base * (max_y_net / y_net_reference) ** (-y_damage_distribution_exponent)
+            # Protect against non-positive y_net which would produce NaN in power calculation
+            if max_y_net > EPSILON:
+                omega_Fmax = Omega_base * (max_y_net / y_net_reference) ** (-y_damage_distribution_exponent)
+            else:
+                omega_Fmax = 1.0 - EPSILON  # Maximum damage for zero/negative income
             omega_Fmax = np.clip(omega_Fmax, 0.0, 1.0 - EPSILON)
 
             # Contribution to aggregate utility (analytical: constant × width)
@@ -799,7 +807,12 @@ def calculate_tendencies(state, params,
             if np.abs(y_damage_distribution_exponent) < EPSILON:
                 omega_region2 = np.full_like(y_net_region2, Omega_base)
             else:
-                omega_region2 = Omega_base * (y_net_region2 / y_net_reference) ** (-y_damage_distribution_exponent)
+                # Protect against non-positive y_net which would produce NaN in power calculation
+                omega_region2 = np.where(
+                    y_net_region2 > EPSILON,
+                    Omega_base * (y_net_region2 / y_net_reference) ** (-y_damage_distribution_exponent),
+                    1.0 - EPSILON  # Maximum damage for zero/negative income
+                )
             omega_region2 = np.clip(omega_region2, 0.0, 1.0 - EPSILON)
 
             # Contribution to aggregate utility (quadrature sum)
