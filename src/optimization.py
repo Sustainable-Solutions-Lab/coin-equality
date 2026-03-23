@@ -258,7 +258,8 @@ def interpolate_to_new_grid(old_times, old_values, new_times):
         old_values[-1]
     )
 
-    new_values = np.clip(new_values, 0.0, 1.0)
+    # Note: No clipping here - bounds are enforced by the optimizer.
+    # f (log10 of MAC) can have values outside [0, 1], e.g., bounds_f = [-1, 4]
 
     return new_values
 
@@ -283,7 +284,7 @@ def evaluate_control_function(control_points, t):
     Returns
     -------
     float or ndarray
-        Control function value(s) at time(s) t, clamped to [0, 1]
+        Control function value(s) at time(s) t
 
     Notes
     -----
@@ -291,7 +292,7 @@ def evaluate_control_function(control_points, t):
     - C¹ continuity (continuous first derivatives)
     - Shape-preserving and monotonicity-preserving
     - No overshoot beyond the range of control point values
-    - Results are clamped to [0,1] to handle numerical precision issues
+    - No clipping applied (bounds are enforced by the optimizer)
 
     Special cases:
     - Single control point [(t₀, f₀)]: returns f₀ for all t (constant)
@@ -336,7 +337,8 @@ def evaluate_control_function(control_points, t):
             values[-1]
         )
 
-    result = np.clip(result, 0.0, 1.0)
+    # Note: No clipping here - bounds are enforced by the optimizer.
+    # f (log10 of MAC) can have values outside [0, 1], e.g., f=2.2 for MAC=$158/tCO2
 
     return result if np.ndim(t) > 0 else float(result[0])
 
@@ -439,19 +441,20 @@ class UtilityOptimizer:
         Notes
         -----
         Uses trapezoidal integration for the discounted utility integral.
-        Control values are clamped to [0, 1] to handle numerical precision issues.
+        Control values are not clipped here - bounds are enforced by the optimizer.
 
         If s_control_values and s_control_times are provided, creates dual control function
         with independent interpolation for f and s. Otherwise, uses fixed s(t) from configuration.
         """
         self.n_evaluations += 1
 
-        control_values = np.clip(control_values, 0.0, 1.0)
+        # Note: No clipping of f values here - bounds are enforced by the optimizer
+        # f (log10 of MAC) can have values outside [0, 1], e.g., bounds_f = [-1, 4]
         f_control_points = list(zip(control_times, control_values))
 
         if s_control_values is not None and s_control_times is not None:
             # f and s optimization mode: both f and s are control variables
-            s_control_values = np.clip(s_control_values, 0.0, 1.0)
+            # s (savings rate) is typically in [0, 1], no clipping needed since optimizer enforces bounds
             s_control_points = list(zip(s_control_times, s_control_values))
             control_function = create_f_and_s_control_function_from_points(f_control_points, s_control_points)
         else:
