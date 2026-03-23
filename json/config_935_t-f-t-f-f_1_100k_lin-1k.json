@@ -1,5 +1,5 @@
 {
-    "run_name": "config_935_t-f-t-f-f_1_100k_lin-50k",
+    "run_name": "config_935_t-f-t-f-f_1_100k_lin-1k",
     "description": "Config 935: Shifted linear cost extension (t-f-t-f-f), 100k evals",
     "scalar_parameters": {
         "alpha": 0.3,
@@ -56,8 +56,8 @@
         "_mu_max_initial": "Initial ceiling on abatement fraction mu at t=0 (5% current abatement)",
         "mu_increase_rate_soft_max": 0.02,
         "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
-        "mac_increase_per_mu_soft_doubling": 50000,
-        "_mac_increase_per_mu_soft_doubling": "MAC increase when mu doubles from mu_soft (linear extension slope = 50000/mu_soft)",
+        "mac_increase_per_mu_soft_doubling": 1000,
+        "_mac_increase_per_mu_soft_doubling": "MAC increase when mu doubles from mu_soft (linear extension slope = 1000/mu_soft)",
         "loose_epsilon": 1e-09,
         "_loose_epsilon": "Convergence tolerance for root-finding in find_Fmax and find_Fmin"
     },

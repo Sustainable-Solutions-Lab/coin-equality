@@ -1,5 +1,5 @@
 {
-    "run_name": "config_935_f-f-f-f-f_1_100k_lin-200k",
+    "run_name": "config_935_f-f-f-f-f_1_test3_lin-1k",
     "description": "Config 935: Shifted linear cost extension (f-f-f-f-f), 100k evals",
     "scalar_parameters": {
         "alpha": 0.3,
@@ -56,8 +56,8 @@
         "_mu_max_initial": "Initial ceiling on abatement fraction mu at t=0 (5% current abatement)",
         "mu_increase_rate_soft_max": 0.02,
         "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
-        "mac_increase_per_mu_soft_doubling": 200000,
-        "_mac_increase_per_mu_soft_doubling": "MAC increase when mu doubles from mu_soft (linear extension slope = 200000/mu_soft)",
+        "mac_increase_per_mu_soft_doubling": 1000,
+        "_mac_increase_per_mu_soft_doubling": "MAC increase when mu doubles from mu_soft (linear extension slope = 1000/mu_soft)",
         "loose_epsilon": 1e-09,
         "_loose_epsilon": "Convergence tolerance for root-finding in find_Fmax and find_Fmin"
     },
@@ -135,8 +135,8 @@
     "integration_parameters": {
         "_description": "Time integration settings",
         "t_start": 2020.0,
-        "t_end": 2420.0,
-        "_t_end": "Integrate for 400 years",
+        "t_end": 2023.0,
+        "_t_end": "Integrate for 3 years",
         "dt": 1.0,
         "_dt": "1-year time step (Euler method)",
         "plot_short_horizon": 100.0,
