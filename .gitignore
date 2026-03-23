@@ -48,3 +48,6 @@ data/output/
 
 # JSON older configurations
 json/older/
+
+# Archived scripts
+scripts/archive/
