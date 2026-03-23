@@ -472,7 +472,7 @@ def create_comparison_xlsx(optimization_data, directories, output_path):
     for sheet_name, column_name, number_format in comparison_specs:
         create_comparison_sheet(wb, sheet_name, column_name, optimization_data, number_format)
 
-    # Add control point sheets for f (abatement allocation)
+    # Add control point sheets for f (log10 of marginal abatement cost)
     create_control_point_sheets(wb, f_control_points, 'f')
 
     # Add control point sheets for s (savings rate) if any case has s optimization
@@ -617,7 +617,7 @@ def create_results_comparison_xlsx(results_data, directories, output_path):
         ('delta_T', 'Temperature Change from Pre-Industrial'),
         ('E', 'CO2 Emissions Rate'),
         ('Ecum', 'Cumulative CO2 Emissions'),
-        ('f', 'Abatement Allocation Fraction'),
+        ('f', 'log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Emissions Abatement Fraction'),
         ('Lambda', 'Abatement Cost (% of Output)'),
         ('AbateCost', 'Total Abatement Cost'),

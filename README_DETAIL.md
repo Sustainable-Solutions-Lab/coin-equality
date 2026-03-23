@@ -56,17 +56,17 @@ This document provides complete technical documentation for the COIN_equality mo
 
 ### Objective Function
 
-The model optimizes the time-integral of aggregate utility by choosing the allocation fraction `f(t)` between emissions abatement and income redistribution:
+The model optimizes the time-integral of aggregate utility by choosing the marginal abatement cost trajectory `f(t) = log₁₀(MAC)`:
 
 ```
-max∫₀^∞ e^(-ρt) · U(t) · L(t) dt,  subject to 0 ≤ f(t) ≤ 1
+max∫₀^∞ e^(-ρt) · U(t) · L(t) dt
 ```
 
 where:
 - `ρ` = pure rate of time preference
 - `U(t)` = mean utility of the population at time t
 - `L(t)` = population at time t
-- `f(t)` = fraction of resources allocated to abatement (control variable)
+- `f(t)` = log₁₀(marginal_abatement_cost) in $/tCO₂ (control variable)
 
 ### Calculation Order
 
@@ -307,26 +307,30 @@ This is production after accounting for climate damage but before abatement cost
 y(t) = (1 - s) · Y_damaged(t) / L(t)
 ```
 
-**Eq. (1.5) - Abatement Cost:**
+**Eq. (1.5) - Marginal Abatement Cost:**
 ```
-AbateCost(t) = f · c_redist(t) · L(t)
+MAC(t) = 10^f
 ```
-This is the total amount society allocates to emissions abatement, where:
-- `f` = fraction of redistributable resources allocated to abatement (0 ≤ f ≤ 1)
-- `c_redist(t)` = per-capita amount of income available for redistribution
-- `L(t)` = population
+The marginal abatement cost is determined by the control variable f = log₁₀(MAC), where:
+- `f` = log₁₀(marginal_abatement_cost) in $/tCO₂ (control variable)
+- `MAC` = marginal abatement cost in $/tCO₂
 
 **Eq. (1.6) - Abatement Fraction:**
 ```
-μ(t) = min(μ_max, [AbateCost(t) · θ₂ / (E_pot(t) · θ₁(t))]^(1/θ₂))
+μ(t) = min(μ_max, (MAC / θ₁(t))^(1/(θ₂-1)))  [for standard DICE]
 ```
-The fraction of potential emissions that are abated, where:
-- `E_pot(t) = σ(t) · Y_gross(t)` = potential (unabated) emissions
+The fraction of potential emissions that are abated, derived by inverting the MAC function:
 - `θ₁(t)` = marginal cost of abatement as μ→1 ($ tCO₂⁻¹)
-- `θ₂` = abatement cost exponent (θ₂=2 gives quadratic cost function)
+- `θ₂` = abatement cost exponent (θ₂=2.6 gives standard DICE cost curve)
 - `μ_max` = maximum allowed abatement fraction (cap on μ)
 
-The calculated μ is capped at μ_max. Values of μ_max > 1 allow for carbon dioxide removal (negative emissions). If μ_max is not specified in the configuration, it defaults to INVERSE_EPSILON (effectively no cap).
+For mu values above μ_soft (rate-constrained regime), a hyperbolic extension is used that ensures MAC→∞ as μ→μ_hard.
+
+**Eq. (1.7) - Abatement Cost:**
+```
+AbateCost(t) = (θ₁/θ₂) · E_pot(t) · μ^θ₂  [for standard DICE]
+```
+Computed from the abatement fraction μ (forward calculation from MAC→μ→cost).
 
 This formulation differs from Nordhaus in that reducing carbon intensity σ(t) reduces the cost of abating remaining emissions, since there are fewer emissions to abate.
 
@@ -411,10 +415,12 @@ U = ln(y) + ln((1-G)/(1+G)) + 2G/(1+G)                              for η = 1
 
 #### 4. Redistribution Mechanics
 
-The model considers allocation of resources between income redistribution and emissions abatement. The key parameters are:
+The model supports allocation of resources between income redistribution and emissions abatement. The key parameters are:
 - `G₁` = initial Gini index
-- `f_gdp` = fraction of total income to be redistributed (specified exogenously)
-- `f` = fraction of redistributable resources allocated to abatement (0 ≤ f ≤ 1)
+- `f_gdp` = fraction of total income available for policy (specified exogenously)
+- `f` = log₁₀(marginal_abatement_cost) in $/tCO₂ (control variable)
+
+**Note:** With `NON_DISTRIBUTION_FRACTION = 1.0` (default), all policy spending goes to abatement and redistribution is disabled.
 
 **Eq. (4.1) - Fraction of Income Redistributed:**
 
@@ -447,7 +453,7 @@ The model now supports `f_gdp >= 1` with special handling that disables redistri
 
 **Current Behavior (f_gdp < 1):**
 - Redistribution operates via income-dependent or uniform policies
-- Control variable `f` determines allocation between abatement and redistribution
+- Control variable `f` = log₁₀(MAC) determines the marginal abatement cost
 - Climate damage calculations integrate over the income distribution using power-law damage function
 - Critical income ranks (Fmin, Fmax) define segments for progressive taxation/redistribution
 
@@ -639,10 +645,10 @@ The model supports two control variables that can be optimized:
 
 | Variable | Description | Units | JSON Key | Status |
 |----------|-------------|-------|----------|---------|
-| `f(t)` | Fraction of redistributable resources allocated to abatement | - | `control_function` | Required |
+| `f(t)` | log₁₀(marginal_abatement_cost) | log₁₀($/tCO₂) | `control_function` | Required |
 | `s(t)` | Savings rate (fraction of net production invested) | - | `s` in `time_functions` or `s_control_function` | Required |
 
-**f(t) - Abatement Allocation:** Determines the allocation between emissions abatement and income redistribution (0 = all to redistribution, 1 = all to abatement). Always specified via `control_function` in the configuration.
+**f(t) - Marginal Abatement Cost:** Determines the marginal cost of abatement in $/tCO₂ via f = log₁₀(MAC). The abatement fraction μ is computed by inverting the cost curve. Always specified via `control_function` in the configuration.
 
 **s(t) - Savings Rate:** Determines the fraction of net output allocated to investment vs. Consumption. Can be specified in two ways:
 - **Fixed/Prescribed s(t):** Defined in `time_functions['s']` using any time function type (constant, piecewise_linear, etc.)
@@ -810,7 +816,7 @@ Each JSON configuration file must contain:
 5. **`integration_parameters`** - Solver configuration:
    - `t_start`, `t_end`, `dt`, `rtol`, `atol`
 
-6. **`control_function`** - Allocation policy f(t):
+6. **`control_function`** - MAC policy f(t) = log₁₀(marginal_abatement_cost):
    - `type`: "constant" or "piecewise_constant"
    - Type-specific parameters (e.g., `value` for constant)
 
@@ -1156,7 +1162,7 @@ The tool creates a timestamped directory `data/output/comparison_YYYYMMDD-HHMMSS
    - Sheet 4: "Elapsed Time (s)" - computation time (if available)
    - Sheet 5: "Termination Status" - optimization termination reasons
    - Sheets 6+: "Iter N f(t)" - f control points for each iteration
-     - Shows optimal f(t) trajectory (abatement allocation) at each iteration
+     - Shows optimal f(t) trajectory (log₁₀(MAC)) at each iteration
      - Time in column A, f values for each case in subsequent columns
      - Allows comparing how the optimal control evolved across iterations
    - Additional sheets: "Iter N s(t)" - s control points (for dual optimization cases)
@@ -1797,7 +1803,7 @@ where ε = 1e-6 (LOOSER_EPSILON) and e[i] is the i-th unit vector.
 
 ### Dual Optimization (f and s)
 
-The model supports simultaneous optimization of both the abatement allocation fraction f(t) and the savings rate s(t). This is enabled by adding an `s_control_function` alongside the standard `control_function`.
+The model supports simultaneous optimization of both the MAC trajectory f(t) = log₁₀(marginal_abatement_cost) and the savings rate s(t). This is enabled by adding an `s_control_function` alongside the standard `control_function`.
 
 #### Configuration for Dual Optimization
 

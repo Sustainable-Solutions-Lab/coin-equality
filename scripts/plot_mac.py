@@ -151,7 +151,7 @@ def main():
     ax3.grid(True, alpha=0.3)
     ax3.set_xlim(2020, 2100)
 
-    # Panel 4: f (fraction of GDP to abatement) over time
+    # Panel 4: f (log10 of MAC) over time
     ax4 = axes[1, 1]
     for scenario in SCENARIOS:
         data = read_results_csv(scenario['dir'])
@@ -159,7 +159,7 @@ def main():
         ax4.plot(data['t'][mask], data['f'][mask],
                  color=scenario['color'], label=scenario['label'], linewidth=1.5)
     ax4.set_xlabel('Year', fontsize=11)
-    ax4.set_ylabel('$f$ (fraction of GDP)', fontsize=11)
+    ax4.set_ylabel('$f$ (log$_{10}$(MAC))', fontsize=11)
     ax4.set_title('Optimal abatement spending $f$', fontsize=12)
     ax4.legend(fontsize=9, loc='upper left')
     ax4.grid(True, alpha=0.3)

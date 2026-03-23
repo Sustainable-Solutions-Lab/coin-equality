@@ -189,7 +189,7 @@ def constant_control(f_value):
     Parameters
     ----------
     f_value : float
-        Constant fraction allocated to abatement (0 <= f <= 1)
+        Constant value for f (log10 of marginal abatement cost in $/tCO2)
 
     Returns
     -------
@@ -681,7 +681,7 @@ class ModelConfiguration:
     initial_state : dict or None
         Initial conditions (computed automatically by integrate_model if None)
     control_function : callable
-        Control function f(t) returning fraction allocated to abatement
+        Control function f(t) returning log10 of marginal abatement cost ($/tCO2)
     """
     run_name: str
     scalar_params: ScalarParameters

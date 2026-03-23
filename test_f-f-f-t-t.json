@@ -128,12 +128,12 @@
         "n_points_final_f": 10,
         "_n_points_final_f": "number of f control points in final iteration. Refinement base = (n_points_final_f - 1)^(1/(n_iterations - 1)). Omit to use default base=2.0",
         "initial_guess_f": 0.8,
-        "_initial_guess_f": "SCALAR: Initial f value for both t_start and t_end in first iteration. Subsequent iterations use PCHIP interpolation from previous solution",
+        "_initial_guess_f": "SCALAR: Initial log10(MAC) value. E.g., 2.0 means MAC = $100/tCO2. Subsequent iterations use PCHIP interpolation from previous solution",
         "bounds_f": [
             0.0,
             1.0
         ],
-        "_bounds_f": "Bounds for f (abatement fraction) as [min, max]. Default: [0.0, 1.0]",
+        "_bounds_f": "Bounds for f (log10 of MAC in $/tCO2) as [min, max]. E.g., [-1.0, 4.0] allows MAC from $0.10 to $10,000",
         "initial_guess_s": 0.28,
         "_initial_guess_s": "SCALAR: Initial s value for both t_start and t_end in first iteration. Presence of this field enables dual optimization of both f and s.",
         "bounds_s": [

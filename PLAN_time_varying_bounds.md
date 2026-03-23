@@ -1,7 +1,7 @@
 # Implementation Plan: Time-Varying Upper Bound on f
 
 ## Goal
-Allow the upper bound on `f` (abatement fraction) to vary over time by defining time-value pairs in the JSON config, interpolated to control point times.
+Allow the upper bound on `f` (log₁₀ of marginal abatement cost) to vary over time by defining time-value pairs in the JSON config, interpolated to control point times.
 
 ## Current State
 - `bounds_f` in JSON is `[min, max]` - constant bounds for all times

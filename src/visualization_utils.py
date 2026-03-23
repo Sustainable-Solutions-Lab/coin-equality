@@ -214,7 +214,7 @@ def create_results_report_pdf(case_data, output_pdf, config_filename=None):
         ('Ecum', 'Cumulative emissions (tCO2)', 'Cumulative CO₂ Emissions'),
 
         # Abatement and Damage
-        ('f', 'Abatement allocation fraction', 'Abatement Allocation Fraction'),
+        ('f', 'log₁₀(MAC) (log₁₀($/tCO₂))', 'Control: log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Abatement fraction', 'Emissions Abatement Fraction'),
         ('dmu_dt_norm', '(dmu/dt) / max(0.05, mu)', 'Normalized Rate of Change of mu (assumes mu_max_initial=0.05)'),
         ('Lambda', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),
@@ -621,7 +621,7 @@ def create_results_report_pdf_to_existing(case_data, pdf, t_min=None, t_max=None
         ('Ecum', 'Cumulative emissions (tCO2)', 'Cumulative CO₂ Emissions'),
 
         # Abatement and Damage
-        ('f', 'Abatement allocation fraction', 'Abatement Allocation Fraction'),
+        ('f', 'log₁₀(MAC) (log₁₀($/tCO₂))', 'Control: log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Abatement fraction', 'Emissions Abatement Fraction'),
         ('dmu_dt_norm', '(dmu/dt) / max(0.05, mu)', 'Normalized Rate of Change of mu (assumes mu_max_initial=0.05)'),
         ('Lambda', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),

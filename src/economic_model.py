@@ -29,7 +29,7 @@ def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
     Compute parameters for C^1-matched hyperbolic cost extension at mu_soft.
 
     The hyperbolic extension ensures both value AND slope continuity at mu_soft:
-    - MAC(mu) = baseline_offset + curvature_scale / (mu_hard - mu)
+    - marginal_abatement_cost(mu) = baseline_offset + curvature_scale / (mu_hard - mu)
     - Cost(mu) = C_soft + baseline_offset * (mu - mu_soft)
                  - curvature_scale * ln((mu_hard - mu) / gap)
 
@@ -42,16 +42,16 @@ def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
     mu_soft : float or ndarray
         Transition point where hyperbolic extension begins
     mu_hard : float or ndarray
-        Asymptote where MAC approaches infinity
+        Asymptote where marginal_abatement_cost approaches infinity
 
     Returns
     -------
     tuple
         (gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft)
         - gap: mu_hard - mu_soft
-        - mac_soft: MAC at mu_soft from DICE formula
-        - slope_soft: d(MAC)/d(mu) at mu_soft from DICE formula
-        - baseline_offset: constant term in hyperbolic MAC
+        - mac_soft: marginal_abatement_cost at mu_soft from DICE formula
+        - slope_soft: d(marginal_abatement_cost)/d(mu) at mu_soft from DICE formula
+        - baseline_offset: constant term in hyperbolic marginal_abatement_cost
         - curvature_scale: coefficient of 1/(mu_hard - mu) term
         - C_soft: total abatement cost at mu_soft from DICE formula
     """
@@ -64,18 +64,18 @@ def compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard):
     return gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft
 
 
-def invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max):
+def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_soft, mu_hard, mu_max):
     """
     Invert marginal abatement cost to get abatement fraction mu.
 
-    Below mu_soft (standard DICE): mu = (MAC/theta1)^(1/(theta2-1))
-    Above mu_soft (hyperbolic):    mu = mu_hard - curvature_scale/(MAC - baseline_offset)
+    Below mu_soft (standard DICE): mu = (marginal_abatement_cost/theta1)^(1/(theta2-1))
+    Above mu_soft (hyperbolic):    mu = mu_hard - curvature_scale/(marginal_abatement_cost - baseline_offset)
 
     Fails fast if computed mu >= mu_hard.
 
     Parameters
     ----------
-    MAC : float
+    marginal_abatement_cost : float
         Marginal abatement cost ($/tCO2)
     theta1 : float
         DICE abatement cost coefficient
@@ -84,7 +84,7 @@ def invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max):
     mu_soft : float
         Transition point where hyperbolic extension begins
     mu_hard : float
-        Asymptote where MAC approaches infinity
+        Asymptote where marginal_abatement_cost approaches infinity
     mu_max : float
         Maximum allowed abatement fraction (cap on mu)
 
@@ -96,19 +96,19 @@ def invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max):
     gap, mac_soft, slope_soft, baseline_offset, curvature_scale, C_soft = \
         compute_hyperbolic_join_params(theta1, theta2, mu_soft, mu_hard)
 
-    if MAC <= mac_soft:
+    if marginal_abatement_cost <= mac_soft:
         # Standard DICE inversion
-        mu = (MAC / theta1) ** (1.0 / (theta2 - 1.0))
+        mu = (marginal_abatement_cost / theta1) ** (1.0 / (theta2 - 1.0))
     else:
-        # Hyperbolic inversion: MAC = baseline_offset + curvature_scale/(mu_hard - mu)
-        # Solve for mu: mu = mu_hard - curvature_scale/(MAC - baseline_offset)
-        mu = mu_hard - curvature_scale / (MAC - baseline_offset)
+        # Hyperbolic inversion: marginal_abatement_cost = baseline_offset + curvature_scale/(mu_hard - mu)
+        # Solve for mu: mu = mu_hard - curvature_scale/(marginal_abatement_cost - baseline_offset)
+        mu = mu_hard - curvature_scale / (marginal_abatement_cost - baseline_offset)
 
     # Fail-fast: mu must be strictly less than mu_hard
     if mu >= mu_hard - EPSILON:
         raise RuntimeError(
-            f"MAC={MAC:.2f} yields mu={mu:.6f} >= mu_hard={mu_hard:.6f}. "
-            f"MAC is too high for current rate constraint."
+            f"marginal_abatement_cost={marginal_abatement_cost:.2f} yields mu={mu:.6f} >= mu_hard={mu_hard:.6f}. "
+            f"marginal_abatement_cost is too high for current rate constraint."
         )
 
     # Apply mu_max cap
@@ -279,7 +279,7 @@ def calculate_tendencies(state, params,
         - 'Gini_fract': Fraction of Gini change as instantaneous step
         - 'Gini_restore': Rate of restoration to gini (yr^-1)
         - 'fract_gdp': Fraction of GDP available for redistribution and abatement
-        - 'f': Fraction allocated to abatement vs redistribution
+        - 'f': log10 of marginal abatement cost ($/tCO2)
     omega_Fmin_Omega_base_ratio_prev : float
         Ratio of climate damage (Region 1: F ≤ Fmin) to base damage from previous timestep.
         Units: dimensionless. Multiply by current Omega_base to get current damage fraction.
@@ -506,7 +506,7 @@ def calculate_tendencies(state, params,
         # Economy exists - proceed with calculations
 
         # ============================================================================
-        # MAC-based optimization: compute mu and abateCost_amount from log10(MAC)
+        # marginal_abatement_cost-based optimization: compute mu and abateCost_amount from log10(marginal_abatement_cost)
         # This must happen BEFORE income distribution calculations that depend on
         # abateCost_amount (tax_amount, uniform_tax_rate, find_Fmax)
         # ============================================================================
@@ -526,13 +526,13 @@ def calculate_tendencies(state, params,
             mu_soft = INVERSE_EPSILON
         mu_hard = (1.0 + mu_increase_rate_hard_max * dt) * mu_base
 
-        # Convert log10(MAC) to linear MAC
-        MAC = 10.0 ** log10_mac
+        # Convert log10(marginal_abatement_cost) to linear marginal_abatement_cost
+        marginal_abatement_cost = 10.0 ** log10_mac
 
-        if epot > EPSILON and MAC > EPSILON:
-            # Invert MAC to get mu (fail-fast if mu >= mu_hard)
+        if epot > EPSILON and marginal_abatement_cost > EPSILON:
+            # Invert marginal_abatement_cost to get mu (fail-fast if mu >= mu_hard)
             mu, gap, mac_soft, baseline_offset, curvature_scale, C_soft = \
-                invert_mac_to_mu(MAC, theta1, theta2, mu_soft, mu_hard, mu_max)
+                invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_soft, mu_hard, mu_max)
 
             # Compute abatement cost from mu
             if mu <= mu_soft:
@@ -1349,8 +1349,8 @@ def create_derived_variables(results):
     savings = s_array * y_net
 
     # Compute marginal abatement cost
-    # Below mu_soft: standard DICE MAC
-    # Above mu_soft: C^1-matched hyperbolic extension (MAC → ∞ at mu_hard)
+    # Below mu_soft: standard DICE marginal_abatement_cost
+    # Above mu_soft: C^1-matched hyperbolic extension (marginal_abatement_cost → ∞ at mu_hard)
     mu_soft = results['mu_soft']
     mu_hard = results['mu_hard']
 

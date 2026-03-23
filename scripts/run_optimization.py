@@ -339,7 +339,7 @@ def create_visualization_plots(sensitivity_results, opt_results, comparison_resu
         ax = axes[0, 0]
         ax.plot(f_vals, obj_vals, 'b-', linewidth=2, label='Objective function')
         ax.plot(f_opt, obj_opt, 'r*', markersize=15, label=f'Optimum (f={f_opt:.4f})')
-        ax.set_xlabel('Abatement fraction f', fontsize=11)
+        ax.set_xlabel('log₁₀(MAC) f', fontsize=11)
         ax.set_ylabel('Discounted utility', fontsize=11)
         ax.set_title('Objective Function Landscape', fontsize=12, fontweight='bold')
         ax.grid(True, alpha=0.3)
@@ -654,7 +654,7 @@ def main():
         print(f"  Iteration {iter_result['iteration']:2d}: {iter_result['n_control_points']:3d} points, "
               f"objective = {iter_result['optimal_objective']:.6e}, "
               f"evals = {iter_result['n_evaluations']}")
-    print(f"\nFinal control trajectory (f - abatement fraction):")
+    print(f"\nFinal control trajectory (f - log10 of MAC):")
     for t_rel, f_val in opt_results['control_points']:
         print(f"  t={t_rel + t_base:6.1f} yr: f={f_val:.6f}")
 

@@ -35,7 +35,7 @@ VARIABLE_METADATA = {
     'delta_T': {'description': 'Temperature Change', 'units': '°C', 'group': 'climate'},
     'redistribution': {'description': 'Per-Capita Redistribution Amount', 'units': '$/person', 'group': 'inequality'},
     'Redistribution_amount': {'description': 'Total Redistribution Amount', 'units': '$/yr', 'group': 'inequality'},
-    'f': {'description': 'Abatement Allocation Fraction', 'units': '', 'group': 'policy'},
+    'f': {'description': 'log₁₀(MAC)', 'units': 'log₁₀($/tCO₂)', 'group': 'policy'},
     'mu': {'description': 'Emissions Abatement Fraction', 'units': '', 'group': 'abatement'},
     'sigma': {'description': 'Carbon Intensity of GDP', 'units': 'tCO₂/$', 'group': 'climate'},
     'theta1': {'description': 'Marginal Abatement Cost at mu=1', 'units': '$/tCO₂', 'group': 'abatement'},
@@ -60,7 +60,7 @@ VARIABLE_METADATA = {
 # Ordered by: dimensionless ratios, dollar variables, everything else, specified functions
 VARIABLE_GROUPS = {
     'dimensionless_ratios': [
-        {'type': 'combined', 'title': 'Control Variables', 'variables': ['f', 's'], 'units': 'fraction'},
+        {'type': 'combined', 'title': 'Control Variables', 'variables': ['f', 's'], 'units': 'see legend'},
         {'type': 'single', 'variables': ['mu']},
         {'type': 'combined', 'title': 'Economic Impact Fractions', 'variables': ['Omega', 'Lambda'], 'units': 'fraction'},
         {'type': 'single', 'variables': ['Gini']},
@@ -343,7 +343,7 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'theta1',  # Marginal abatement cost at mu=1
         'sigma',  # Carbon intensity of GDP
         # Decision variables
-        'f',  # Control: fraction allocated to abatement
+        'f',  # Control: log10(marginal_abatement_cost)
         's',  # Savings rate
         # State variables
         'K',  # Capital stock
@@ -420,7 +420,7 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'Redistribution_amount': ('Total redistribution amount', '$/yr'),
         'U': ('Mean utility per capita', 'dimensionless'),
         's': ('Savings rate', 'dimensionless'),
-        'f': ('Control: fraction allocated to abatement vs redistribution', 'dimensionless'),
+        'f': ('Control: log10(marginal_abatement_cost)', 'log10($/tCO2)'),
         'marginal_abatement_cost': ('Marginal abatement cost (social cost of carbon)', '$/tCO2'),
         'welfare_adjusted_mac': ('Welfare-adjusted MAC (should match SCC at unconstrained optimum)', '$/tCO2'),
         'mac_over_wmac': ('Ratio of raw MAC to welfare-adjusted MAC', 'dimensionless'),

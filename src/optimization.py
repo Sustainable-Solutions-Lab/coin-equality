@@ -1,8 +1,9 @@
 """
-Optimization framework for finding optimal allocation between redistribution and abatement.
+Optimization framework for finding optimal marginal abatement cost trajectory.
 
-This module provides control point parameterization for the control function f(t)
-and optimization using NLopt to maximize discounted aggregate utility.
+This module provides control point parameterization for the control function f(t),
+where f = log10(marginal_abatement_cost), and optimization using NLopt to maximize
+discounted aggregate utility.
 """
 
 import numpy as np
@@ -387,14 +388,14 @@ def create_f_and_s_control_function_from_points(f_control_points, s_control_poin
 
 class UtilityOptimizer:
     """
-    Optimizer for finding optimal allocation between redistribution and abatement.
+    Optimizer for finding optimal marginal abatement cost trajectory.
 
     Maximizes the discounted aggregate utility integral:
         max ∫₀^T e^(-ρt) · U(t) · L(t) dt
 
     where U(t) is mean utility and L(t) is population.
 
-    The control function f(t) is parameterized by discrete control points,
+    The control function f(t) = log10(MAC) is parameterized by discrete control points,
     with interpolation and extrapolation handled by evaluate_control_function().
     """
 
@@ -1435,7 +1436,7 @@ class UtilityOptimizer:
             else:
                 print(f"  Spacing: segment 1 growth r0={f_r0:.4f}, segment 2 growth r1={f_r1:.4f}")
 
-            print(f"\n  f (abatement fraction) - OPTIMIZED:")
+            print(f"\n  f (log10 of MAC) - OPTIMIZED:")
             print(f"    Control points: {n_points_f}")
             print(f"    Time points: {f_control_times + t_base}")
 

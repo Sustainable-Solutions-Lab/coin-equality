@@ -88,7 +88,7 @@ Optimize the allocation between redistribution and abatement:
 python scripts/run_optimization.py test_f-f-f-t-t.json
 ```
 
-This will find the optimal time trajectory of the control variable f(t) (fraction allocated to abatement vs. redistribution) that maximizes the discounted time-integral of aggregate utility.
+This will find the optimal time trajectory of the control variable f(t) = log₁₀(marginal_abatement_cost) that maximizes the discounted time-integral of aggregate utility.
 
 ## Analyzing Results
 
@@ -194,17 +194,17 @@ This is useful for:
 
 ### Objective Function
 
-The model optimizes the time-integral of aggregate utility by choosing the allocation fraction f(t) between emissions abatement and income redistribution:
+The model optimizes the time-integral of aggregate utility by choosing the marginal abatement cost trajectory f(t) = log₁₀(MAC):
 
 ```
-max∫₀^∞ e^(-ρt) · U(t) · L(t) dt,  subject to 0 ≤ f(t) ≤ 1
+max∫₀^∞ e^(-ρt) · U(t) · L(t) dt
 ```
 
 where:
 - ρ = pure rate of time preference
 - U(t) = mean utility of the population at time t
 - L(t) = population at time t
-- f(t) = fraction of resources allocated to abatement (control variable)
+- f(t) = log₁₀(marginal_abatement_cost) in $/tCO₂ (control variable)
 
 ### Core Components
 
@@ -278,7 +278,7 @@ All model parameters are specified in JSON configuration files. See `test_f-f-f-
 Key configuration sections:
 - `scalar_parameters` - Time-invariant constants (α, δ, η, ρ, etc.)
 - `time_functions` - Time-dependent functions (A(t), L(t), σ(t), θ₁(t), gini(t), emission_ratio(t), Eland(t), etc.)
-- `control_function` - Allocation policy f(t)
+- `control_function` - MAC policy f(t) = log₁₀(marginal_abatement_cost)
 - `integration_parameters` - Time span and step size
 - `optimization_parameters` - Optimization settings
 
