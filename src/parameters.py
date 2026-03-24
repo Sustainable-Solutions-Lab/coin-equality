@@ -344,18 +344,6 @@ class ScalarParameters:
         Base year for time-dependent functions. Time functions receive (t - t_base)
         so they can be parameterized for relative time (0 = base year).
         Default: 2020.0
-    mu_max_initial : float
-        Ceiling on abatement fraction μ at t=0.
-        Default: INVERSE_EPSILON (unconstrained)
-    mu_increase_rate_soft_max : float
-        Relative rate of mu increase below which no cost penalty applies.
-        When mu grows faster than this rate, cost extension kicks in.
-        Default: INVERSE_EPSILON (no penalty)
-    mac_increase_per_mu_soft_doubling : float
-        MAC increase when mu doubles from mu_soft (100% increase).
-        Used for linear cost extension above mu_soft.
-        Formula: For μ > μ_soft, d(MAC)/d(μ) = mac_increase_per_mu_soft_doubling / μ_soft
-        Default: INVERSE_EPSILON (effectively no extension)
     loose_epsilon : float
         Convergence tolerance for root-finding in find_Fmax and find_Fmin.
         Default: 1e-8
@@ -381,12 +369,6 @@ class ScalarParameters:
     t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
     mu_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     Ecum_initial: float = 0.0  # Default to zero (no prior emissions)
-    # Rate-of-change constraint on μ
-    mu_max_initial: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    # Soft abatement increase constraint (cost extension above mu_soft)
-    mu_increase_rate_soft_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    # Linear cost extension: MAC increases linearly above mu_soft
-    mac_increase_per_mu_soft_doubling: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
     # Extra emission pulse parameters (for sensitivity analysis)
     year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
     amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
@@ -397,16 +379,10 @@ class ScalarParameters:
     loose_epsilon: float = 1e-8
 
     def __post_init__(self):
-        """Set defaults for mu_max and mu rate constraints if not provided."""
+        """Set defaults for mu_max if not provided."""
         from src.constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
-        if self.mu_max_initial is None:
-            object.__setattr__(self, 'mu_max_initial', INVERSE_EPSILON)
-        if self.mu_increase_rate_soft_max is None:
-            object.__setattr__(self, 'mu_increase_rate_soft_max', INVERSE_EPSILON)
-        if self.mac_increase_per_mu_soft_doubling is None:
-            object.__setattr__(self, 'mac_increase_per_mu_soft_doubling', INVERSE_EPSILON)
 
 
 @dataclass
@@ -779,11 +755,6 @@ def evaluate_params_at_time(t, config):
         params['Eland'] = tf['Eland'](t_relative)
     else:
         params['Eland'] = 0.0  # No land emissions
-
-    # Soft abatement increase constraint parameters
-    params['mu_increase_rate_soft_max'] = sp.mu_increase_rate_soft_max
-    params['mu_max_initial'] = sp.mu_max_initial
-    params['mac_increase_per_mu_soft_doubling'] = sp.mac_increase_per_mu_soft_doubling
 
     # Extra emission/consumption pulse parameters
     params['year_extra_emission'] = sp.year_extra_emission

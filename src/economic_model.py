@@ -24,45 +24,11 @@ from src.parameters import evaluate_params_at_time
 from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, NON_DISTRIBUTION_FRACTION
 
 
-def compute_linear_extension_params(theta1, theta2, mu_soft, mac_increase_per_mu_soft_doubling):
+def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
     """
-    Compute parameters for linear MAC extension above mu_soft.
+    Invert marginal abatement cost to get abatement fraction mu using standard DICE formula.
 
-    The linear extension provides a soft cap (no asymptote):
-    - For μ > μ_soft: MAC(μ) = mac_soft + linear_slope * (μ - μ_soft)
-    - Total cost for μ > μ_soft: C_soft + mac_soft*(μ-μ_soft) + (linear_slope/2)*(μ-μ_soft)²
-
-    Parameters
-    ----------
-    theta1 : float or ndarray
-        DICE abatement cost coefficient
-    theta2 : float or ndarray
-        DICE abatement cost exponent
-    mu_soft : float or ndarray
-        Transition point where linear extension begins
-    mac_increase_per_mu_soft_doubling : float or ndarray
-        MAC increase when mu doubles from mu_soft (100% increase)
-
-    Returns
-    -------
-    tuple
-        (mac_soft, C_soft, linear_slope)
-        - mac_soft: marginal_abatement_cost at mu_soft from DICE formula
-        - C_soft: total abatement cost at mu_soft from DICE formula
-        - linear_slope: d(MAC)/d(μ) = mac_increase_per_mu_soft_doubling / mu_soft
-    """
-    mac_soft = theta1 * mu_soft ** (theta2 - 1.0)
-    C_soft = (theta1 / theta2) * mu_soft ** theta2
-    linear_slope = mac_increase_per_mu_soft_doubling / mu_soft
-    return mac_soft, C_soft, linear_slope
-
-
-def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_soft, mac_increase_per_mu_soft_doubling, mu_max):
-    """
-    Invert marginal abatement cost to get abatement fraction mu.
-
-    Below mu_soft (standard DICE): mu = (marginal_abatement_cost/theta1)^(1/(theta2-1))
-    Above mu_soft (linear):        mu = mu_soft + (marginal_abatement_cost - mac_soft) / linear_slope
+    mu = (marginal_abatement_cost/theta1)^(1/(theta2-1))
 
     Parameters
     ----------
@@ -72,33 +38,21 @@ def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_soft, mac_incre
         DICE abatement cost coefficient
     theta2 : float
         DICE abatement cost exponent
-    mu_soft : float
-        Transition point where linear extension begins
-    mac_increase_per_mu_soft_doubling : float
-        MAC increase when mu doubles from mu_soft
     mu_max : float
         Maximum allowed abatement fraction (cap on mu)
 
     Returns
     -------
-    tuple
-        (mu, mac_soft, C_soft, linear_slope)
+    float
+        Abatement fraction mu (capped at mu_max)
     """
-    mac_soft, C_soft, linear_slope = \
-        compute_linear_extension_params(theta1, theta2, mu_soft, mac_increase_per_mu_soft_doubling)
-
-    if marginal_abatement_cost <= mac_soft:
-        # Standard DICE inversion
-        mu = (marginal_abatement_cost / theta1) ** (1.0 / (theta2 - 1.0))
-    else:
-        # Linear inversion: marginal_abatement_cost = mac_soft + linear_slope * (mu - mu_soft)
-        # Solve for mu: mu = mu_soft + (marginal_abatement_cost - mac_soft) / linear_slope
-        mu = mu_soft + (marginal_abatement_cost - mac_soft) / linear_slope
+    # Standard DICE inversion
+    mu = (marginal_abatement_cost / theta1) ** (1.0 / (theta2 - 1.0))
 
     # Apply mu_max cap
     mu = min(mu_max, mu)
 
-    return mu, mac_soft, C_soft, linear_slope
+    return mu
 
 
 def gini_from_distribution(values_yi, Fi_edges, Fwi):
@@ -356,10 +310,6 @@ def calculate_tendencies(state, params,
     amount_extra_consumption = params['amount_extra_consumption']
     Eland = params['Eland']
     dt = params['dt']
-    mu_prev = params['mu_prev']
-    mu_increase_rate_soft_max = params['mu_increase_rate_soft_max']
-    mu_max_initial = params['mu_max_initial']
-    mac_increase_per_mu_soft_doubling = params['mac_increase_per_mu_soft_doubling']
 
     # Validate Gini coefficient for empirical Lorenz
     if use_empirical_lorenz and gini > EMPIRICAL_LORENZ_BASE_GINI:
@@ -471,7 +421,6 @@ def calculate_tendencies(state, params,
         lambda_abate = 0.0
         y_net = 0.0
         mu = 0.0
-        mu_soft = INVERSE_EPSILON
         U = NEG_BIGNUM
         e = 0.0
         eland = 0.0
@@ -500,35 +449,18 @@ def calculate_tendencies(state, params,
         # Eq 2.1: Potential emissions per capita (unabated), including land emissions
         epot = sigma * y_gross * emission_ratio + eland
 
-        # Compute mu_soft based on rate constraint
-        # Loophole fix: baseline never drops below mu_max_initial
-        mu_base = max(mu_max_initial, mu_prev)
-        if mu_base > EPSILON:
-            mu_soft = (1.0 + mu_increase_rate_soft_max * dt) * mu_base
-        else:
-            mu_soft = INVERSE_EPSILON
-
         # Convert log10(marginal_abatement_cost) to linear marginal_abatement_cost
         marginal_abatement_cost = 10.0 ** log10_mac
 
         if epot > EPSILON and marginal_abatement_cost > EPSILON:
-            # Invert marginal_abatement_cost to get mu
-            mu, mac_soft, C_soft, linear_slope = \
-                invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_soft, mac_increase_per_mu_soft_doubling, mu_max)
+            # Invert marginal_abatement_cost to get mu using standard DICE formula
+            mu = invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max)
 
-            # Compute abatement cost from mu
-            if mu <= mu_soft:
-                # Standard DICE cost
-                abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
-            else:
-                # Linear cost extension: C_soft + mac_soft*(mu-mu_soft) + (linear_slope/2)*(mu-mu_soft)²
-                delta_mu = mu - mu_soft
-                abateCost_amount = epot * (C_soft + mac_soft * delta_mu + (linear_slope / 2.0) * delta_mu ** 2)
+            # Compute abatement cost from mu using standard DICE formula
+            abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
         else:
             mu = 0.0
             abateCost_amount = 0.0
-            mac_soft = 0.0
-            linear_slope = 0.0
 
         # Compute lambda_abate from the derived abateCost_amount
         lambda_abate = abateCost_amount / y_damaged_calc if y_damaged_calc > EPSILON else 0.0
@@ -982,7 +914,6 @@ def calculate_tendencies(state, params,
     results.update({
         'U': U,
         'mu': mu,
-        'mu_soft': mu_soft,
         'dK_dt': dK_dt,
         'dEcum_dt': e * L + E_extra,
     })
@@ -1059,9 +990,6 @@ def integrate_model(config, store_detailed_output=True):
     dt = config.integration_params.dt
     n_quad = config.integration_params.n_quad
 
-    # Extract scalar params for mu rate-of-change constraint
-    sp = config.scalar_params
-
     # Create time array
     t_array = np.arange(t_start, t_end + dt, dt)
     n_steps = len(t_array)
@@ -1133,7 +1061,6 @@ def integrate_model(config, store_detailed_output=True):
             'emission_ratio': np.zeros(n_steps),
             'E_extra': np.zeros(n_steps),
             'consumption_extra': np.zeros(n_steps),
-            'mu_soft': np.full(n_steps, INVERSE_EPSILON),
         })
 
     # Always store time, state variables, and objective function variables
@@ -1156,9 +1083,6 @@ def integrate_model(config, store_detailed_output=True):
             'Fi_edges': (xi_edges + 1.0) / 2.0,
         })
 
-    # Initialize mu_prev for soft abatement increase constraint
-    mu_prev = sp.mu_max_initial
-
     # Time stepping loop
     for i, t in enumerate(t_array):
         # Evaluate time-dependent parameters at current time
@@ -1166,9 +1090,6 @@ def integrate_model(config, store_detailed_output=True):
 
         # Pass dt for extra emission pulse timing
         params['dt'] = dt
-
-        # Pass mu_prev for soft abatement increase penalty
-        params['mu_prev'] = mu_prev
 
         if store_detailed_output:
             results['params_list'].append(params)
@@ -1181,9 +1102,6 @@ def integrate_model(config, store_detailed_output=True):
                                       Fmin_prev, Fmax_prev,
                                       Omega_Omega_base_ratio_prev,
                                       xi, xi_edges, wi, store_detailed_output)
-
-        # Update mu_prev for soft abatement increase penalty
-        mu_prev = outputs['mu']
 
         # Always store variables needed for objective function
         results['U'][i] = outputs['U']
@@ -1245,7 +1163,6 @@ def integrate_model(config, store_detailed_output=True):
             results['emission_ratio'][i] = outputs['emission_ratio']
             results['E_extra'][i] = outputs['E_extra']
             results['consumption_extra'][i] = outputs['consumption_extra']
-            results['mu_soft'][i] = outputs['mu_soft']
 
         # Euler step: update state for next iteration (skip on last step)
         if i < n_steps - 1:
@@ -1338,24 +1255,8 @@ def create_derived_variables(results):
     Savings = s_array * Y_net
     savings = s_array * y_net
 
-    # Compute marginal abatement cost
-    # Below mu_soft: standard DICE marginal_abatement_cost
-    # Above mu_soft: linear extension (no asymptote)
-    mu_soft = results['mu_soft']
-
-    # Extract mac_increase_per_mu_soft_doubling from params_list
-    mac_increase_per_mu_soft_doubling_array = np.array(
-        [p['mac_increase_per_mu_soft_doubling'] for p in params_list]
-    )
-
-    mac_soft, C_soft, linear_slope = \
-        compute_linear_extension_params(theta1_array, theta2_array, mu_soft, mac_increase_per_mu_soft_doubling_array)
-
-    marginal_abatement_cost = np.where(
-        mu <= mu_soft,
-        theta1_array * (mu ** (theta2_array - 1.0)),
-        mac_soft + linear_slope * (mu - mu_soft)
-    )
+    # Compute marginal abatement cost using standard DICE formula
+    marginal_abatement_cost = theta1_array * (mu ** (theta2_array - 1.0))
 
     # ---------- Welfare-adjusted MAC (wMAC) for SCC consistency ----------
     # SCC "$ pulse" in calculate_tendencies scales everyone's consumption by the same factor,

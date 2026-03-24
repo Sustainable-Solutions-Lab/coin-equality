@@ -1,6 +1,6 @@
 {
-    "run_name": "config_932_f-f-t-f-f_1_100k_hyp-0.6",
-    "description": "Config 931: Hyperbolic cost extension with corrected mu_hard formula (f-f-t-f-f), 100k evals",
+    "run_name": "config_936_t-f-t-f-f_100k_6000-3.7_base",
+    "description": "Config 936: No mu rate constraints (t-f-t-f-f), 100k evals",
     "scalar_parameters": {
         "alpha": 0.3,
         "_alpha": "Capital share of income",
@@ -14,8 +14,8 @@
         "_k_climate": "From DICE central case emissions and temperature change 2020 to 2050; Temperature sensitivity to cumulative  (K/tCO2) 0.5e-12 ~ 1.8 K per 1000 GtC [noe we are in CO2 units]",
         "eta": 1.45,
         "_eta": "Coefficient of relative risk aversion",
-        "rho": 0.01,
-        "_rho": "Pure rate of time preference (1 % per year)",
+        "rho": 0.026,
+        "_rho": "Pure rate of time preference (2.6 % per year)",
         "fract_gdp": 1.0,
         "_fract_gdp": "Fraction of GDP available for redistribution and abatement",
         "theta2": 2.6,
@@ -32,7 +32,7 @@
         "_y_damage_distribution_exponent": "Exponent for income-dependent damage distribution.",
         "income_dependent_damage_distribution": false,
         "_income_dependent_damage_distribution": "If true, damage weighted towards low-income (uses y_damage_distribution_exponent and y_net_reference)",
-        "income_dependent_aggregate_damage": false,
+        "income_dependent_aggregate_damage": true,
         "_income_dependent_aggregate_damage": "Subswitch of income_dependent_damage_distribution: If false, aggregate damage is fixed and distribution adjusted to match; if true, aggregate damage decreases as world gets richer",
         "income_dependent_tax_policy": true,
         "_income_dependent_tax_policy": "If true, progressive tax (tax richest); if false, uniform fractional tax",
@@ -46,18 +46,12 @@
         "_t_base": "Base year for time functions. Functions receive (t - t_base).",
         "year_extra_emission": 0.0,
         "_year_extra_emission": "Year to add extra emission pulse (0 = disabled)",
-        "amount_extra_emission": 1000000.0,
+        "amount_extra_emission": 0.0,
         "_amount_extra_emission": "Default emission pulse for SCC calculation (1 MtCO2)",
         "year_extra_consumption": 0.0,
         "_year_extra_consumption": "Year to add extra consumption pulse (0 = disabled)",
-        "amount_extra_consumption": 1000000.0,
+        "amount_extra_consumption": 0.0,
         "_amount_extra_consumption": "Default consumption pulse for SCC calculation ($1M)",
-        "mu_max_initial": 0.05,
-        "_mu_max_initial": "Initial ceiling on abatement fraction mu at t=0 (5% current abatement)",
-        "mu_increase_rate_soft_max": 0.02,
-        "_mu_increase_rate_soft_max": "Relative rate of mu increase below which standard DICE cost applies; above this rate, quadratic cost extension kicks in (2% per year)",
-        "mu_increase_rate_hard_max": 0.06,
-        "_mu_increase_rate_hard_max": "Relative rate at which abatement cost becomes infinite (3% per year)",
         "loose_epsilon": 1e-09,
         "_loose_epsilon": "Convergence tolerance for root-finding in find_Fmax and find_Fmin"
     },
@@ -94,14 +88,14 @@
         "theta1": {
             "_description": "Abatement cost per ton of CO2 for the last ton abated ($/tCO2)",
             "type": "double_exponential_growth",
-            "initial_value": 695.177385,
+            "initial_value": 6035.6,
             "_initial_value": "Best 2 double exponential fit to Barage & Nordhaus 2023",
-            "growth_rate_1": -0.023,
+            "growth_rate_1": -0.224,
             "_growth_rate_1": "2-exponential fit to sigma in Barrage & Nordhaus 2023",
-            "growth_rate_2": -0.00065,
+            "growth_rate_2": -0.00112,
             "_growth_rate_2": "2-exponential fit to sigma in Barrage & Nordhaus 2023",
-            "fract_1": 0.310452,
-            "_fract_1": "2-exponential fit to sigma in Barrage & Nordhaus 2023"
+            "fract_1": 0.906,
+            "_fract_1": "2-exponential fit to scc and mu from Barrage & Nordhaus 2023"
         },
         "gini": {
             "_description": "Background Gini index (restoring attractor for Gini dynamics), assuming t = 0 is year 2020",
@@ -183,13 +177,13 @@
             2220
         ],
         "_n_points_final_f": "number of f control points in final iteration. Refinement base = (n_points_final_f - 1)^(1/(n_iterations - 1)). Omit to use default base=2.0",
-        "initial_guess_f": 0.04,
-        "_initial_guess_f": "SCALAR: Initial f value for both t_start and t_end in first iteration. Subsequent iterations use PCHIP interpolation from previous solution",
+        "initial_guess_f": 2.0,
+        "_initial_guess_f": "SCALAR: Initial f value (log10 of MAC in $/tCO2). f=2.0 means MAC=$100/tCO2",
         "bounds_f": [
-            0.0,
-            0.1
+            -1.0,
+            4.0
         ],
-        "_bounds_f": "Bounds for f (abatement fraction) as [min, max]. Default: [0.0, 1.0]",
+        "_bounds_f": "Bounds for f (log10 of MAC in $/tCO2). [-1,4] means MAC from $0.10 to $10,000",
         "initial_guess_s": 0.256,
         "_initial_guess_s": "SCALAR: Initial s value for both t_start and t_end in first iteration. Presence of this field enables dual optimization of both f and s.",
         "bounds_s": [

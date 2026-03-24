@@ -183,20 +183,6 @@ def create_results_report_pdf(case_data, output_pdf, config_filename=None):
     # Clean column names from 'var, Description, (units)' format to just 'var'
     case_data = {name: clean_column_names(df.copy()) for name, df in case_data.items()}
 
-    # Compute normalized rate of change of mu: (dmu/dt) / max(mu_max_initial, mu(t))
-    # Assumes mu_max_initial = 0.05
-    mu_max_initial = 0.05
-    for df in case_data.values():
-        if 'mu' in df.columns and 't' in df.columns:
-            mu = df['mu'].values
-            t_vals = df['t'].values
-            dt = np.diff(t_vals, prepend=t_vals[0])
-            dmu = np.diff(mu, prepend=mu[0])
-            dt[0] = 1.0  # avoid division by zero for first element
-            dmu_dt = dmu / dt
-            dmu_dt[0] = 0.0
-            df['dmu_dt_norm'] = dmu_dt / np.maximum(mu_max_initial, mu)
-
     # Define all variables to plot (in display order, grouped by category)
     variable_specs = [
         # Economic Variables
@@ -216,7 +202,6 @@ def create_results_report_pdf(case_data, output_pdf, config_filename=None):
         # Abatement and Damage
         ('f', 'log₁₀(MAC) (log₁₀($/tCO₂))', 'Control: log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Abatement fraction', 'Emissions Abatement Fraction'),
-        ('dmu_dt_norm', '(dmu/dt) / max(0.05, mu)', 'Normalized Rate of Change of mu (assumes mu_max_initial=0.05)'),
         ('Lambda', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),
         ('AbateCost', 'Abatement cost ($/yr)', 'Total Abatement Cost'),
         ('Omega', 'Climate damage fraction', 'Climate Damage (% of Output)'),
@@ -591,20 +576,6 @@ def create_results_report_pdf_to_existing(case_data, pdf, t_min=None, t_max=None
     # Clean column names from 'var, Description, (units)' format to just 'var'
     case_data = {name: clean_column_names(df.copy()) for name, df in case_data.items()}
 
-    # Compute normalized rate of change of mu: (dmu/dt) / max(mu_max_initial, mu(t))
-    # Assumes mu_max_initial = 0.05
-    mu_max_initial = 0.05
-    for df in case_data.values():
-        if 'mu' in df.columns and 't' in df.columns:
-            mu = df['mu'].values
-            t_vals = df['t'].values
-            dt = np.diff(t_vals, prepend=t_vals[0])
-            dmu = np.diff(mu, prepend=mu[0])
-            dt[0] = 1.0  # avoid division by zero for first element
-            dmu_dt = dmu / dt
-            dmu_dt[0] = 0.0
-            df['dmu_dt_norm'] = dmu_dt / np.maximum(mu_max_initial, mu)
-
     variable_specs = [
         # Economic Variables
         ('y_net', 'Effective income ($/person/yr)', 'Effective Per-Capita Income'),
@@ -623,7 +594,6 @@ def create_results_report_pdf_to_existing(case_data, pdf, t_min=None, t_max=None
         # Abatement and Damage
         ('f', 'log₁₀(MAC) (log₁₀($/tCO₂))', 'Control: log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Abatement fraction', 'Emissions Abatement Fraction'),
-        ('dmu_dt_norm', '(dmu/dt) / max(0.05, mu)', 'Normalized Rate of Change of mu (assumes mu_max_initial=0.05)'),
         ('Lambda', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),
         ('AbateCost', 'Abatement cost ($/yr)', 'Total Abatement Cost'),
         ('Omega', 'Climate damage fraction', 'Climate Damage (% of Output)'),
