@@ -90,8 +90,8 @@ The differential equation solver uses climate damage from the previous timestep 
    - If income-dependent: find_Fmin() computes critical rank using root finding with analytical Lorenz integrals
    - If uniform: Fmin = 0, uniform_redistribution = redistribution_amount
 11. **Fmax, uniform_tax_rate** from income_dependent_tax_policy:
-   - If income-dependent: find_Fmax() computes critical rank using root finding with analytical Lorenz integrals
-   - If uniform: Fmax = 1.0, uniform_tax_rate = (abateCost + redistribution) / (y_gross * (1 - Omega))
+   - If 'u-max': find_Fmax() computes critical rank using root finding with analytical Lorenz integrals
+   - If 'r-uniform': Fmax = 1.0, uniform_tax_rate = (abateCost + redistribution) / (y_gross * (1 - Omega))
 
 **Segment-wise Integration (F-space with Fi_edges):**
 12. **Fi, Fi_edges** = transform xi, xi_edges from [-1,1] to [0,1]
@@ -202,7 +202,7 @@ where:
 
 **Finding Fmax (Income-Dependent Tax Threshold):**
 
-When `income_dependent_tax_policy = true`, Fmax is the minimum income rank paying progressive taxation.
+When `income_dependent_tax_policy = 'u-max'`, Fmax is the minimum income rank paying progressive taxation.
 
 The calculation finds Fmax such that progressive taxation on those above Fmax generates the target tax revenue:
 

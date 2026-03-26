@@ -326,9 +326,8 @@ class ScalarParameters:
     income_dependent_damage_distribution : bool
         If True, damage is weighted towards low-income (uses y_damage_distribution_exponent)
         If False, damage is distributed uniformly across income distribution
-    income_dependent_tax_policy : bool
-        If True, progressive tax (tax richest fraction)
-        If False, uniform fractional tax (DICE-like)
+    income_dependent_tax_policy : str
+        Tax policy type: 'u-max' (progressive, tax richest), 'r-uniform' (uniform fractional, DICE-like), 'u-uniform' (equal utility loss, future)
     income_redistribution : bool
         If True, enable redistribution (revenues can be redistributed)
         If False, no redistribution (all revenues go to abatement)
@@ -362,7 +361,7 @@ class ScalarParameters:
     K_initial: float
     income_dependent_aggregate_damage: bool
     income_dependent_damage_distribution: bool
-    income_dependent_tax_policy: bool
+    income_dependent_tax_policy: str
     income_redistribution: bool
     income_dependent_redistribution_policy: bool
     use_empirical_lorenz: bool = False

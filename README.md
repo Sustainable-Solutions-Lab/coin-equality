@@ -318,10 +318,11 @@ The model has 5 boolean switches controlling different policy features. Three ar
    - When false: No redistribution occurs
    - Parent switch for: `income_dependent_redistribution_policy`
 
-3. **`income_dependent_tax_policy`** (boolean, default: false)
-   - Controls whether taxation is progressive or uniform
-   - When true: Progressive tax using `find_Fmax()` to determine tax threshold
-   - When false: Uniform tax rate applied to all income
+3. **`income_dependent_tax_policy`** (string, default: 'r-uniform')
+   - Controls the tax policy type
+   - `'u-max'`: Progressive tax using `find_Fmax()` to determine tax threshold (tax richest)
+   - `'r-uniform'`: Uniform fractional tax rate applied to all income (DICE-like)
+   - `'u-uniform'`: Equal utility loss (to be implemented)
 
 #### Sub-Switches (Only Meaningful with Parent Enabled)
 

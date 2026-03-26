@@ -505,7 +505,7 @@ def calculate_tendencies(state, params,
         # Pre-compute uniform tax rate when policy is uniform so Fmin uses taxed income
         # Uniform tax always covers full budget (abatement + redistribution)
         # Fmin is calculated AFTER uniform tax to ensure equal consumption below Fmin
-        if income_dependent_tax_policy:
+        if income_dependent_tax_policy == 'u-max':
             uniform_tax_rate = 0.0
         else:
             uniform_tax_rate = (abateCost_amount - consumption_extra + redistribution_amount) / y_damaged_calc
@@ -545,7 +545,7 @@ def calculate_tendencies(state, params,
 
  
         # For income-dependent tax, find Fmax such that tax matches target
-        if income_dependent_tax_policy:
+        if income_dependent_tax_policy == 'u-max':
             # Only find Fmax if there's actually something to tax
             if tax_amount > EPSILON:
                 # We want to find the value of Fmax such that if everyone above Fmax made
@@ -1270,7 +1270,7 @@ def create_derived_variables(results):
     max_y_net = results['max_y_net']
     y_net_yi = results['y_net_yi']
 
-    income_dep_tax = np.array([p['income_dependent_tax_policy'] for p in params_list], dtype=bool)
+    income_dep_tax = np.array([p['income_dependent_tax_policy'] for p in params_list])
 
     # Per-capita consumption by region
     c_min = np.maximum((1.0 - s_array) * min_y_net, EPSILON)          # shape (n_steps,)
@@ -1308,7 +1308,7 @@ def create_derived_variables(results):
     #   mu_dollar_cost = (1-s) * c_max^(-eta) + s * mu_dollar_numeraire
     # Under uniform tax, the cost incidence matches the numeraire, so mu_dollar_cost = mu_dollar_numeraire.
     mu_dollar_cost = np.where(
-        income_dep_tax & ((1.0 - Fmax) > 1e-12),
+        (income_dep_tax == 'u-max') & ((1.0 - Fmax) > 1e-12),
         (1.0 - s_array) * c_max ** (-eta_array) + s_array * mu_dollar_numeraire,
         mu_dollar_numeraire
     )
