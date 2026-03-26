@@ -322,7 +322,7 @@ The model has 5 boolean switches controlling different policy features. Three ar
    - Controls the tax policy type
    - `'u-max'`: Progressive tax using `find_Fmax()` to determine tax threshold (tax richest)
    - `'r-uniform'`: Uniform fractional tax rate applied to all income (DICE-like)
-   - `'u-uniform'`: Equal utility loss (to be implemented)
+   - `'u-uniform'`: Equal utility loss taxation (see below)
 
 #### Sub-Switches (Only Meaningful with Parent Enabled)
 
@@ -344,6 +344,35 @@ The model has 5 boolean switches controlling different policy features. Three ar
    - Code enforces: Only checked when `income_redistribution` is true
 
 **Important**: The code automatically enforces these dependencies. Sub-switches are only evaluated when their parent switch is enabled, ensuring logically consistent behavior.
+
+#### Equal Utility Loss Taxation ('u-uniform')
+
+The `'u-uniform'` tax policy implements equal utility loss taxation, where everyone pays a tax that results in the same utility loss regardless of income level. This is more welfare-efficient than uniform fractional taxation because it accounts for the diminishing marginal utility of income.
+
+**Mathematical Formulation:**
+
+With CRRA utility U(c) = c^(1-η)/(1-η) for η≠1, or U(c) = ln(c) for η=1:
+
+- **Equal utility loss condition:** U(y) - U(c) = K for all incomes, where K is a constant
+- **Post-tax income:**
+  - For η ≠ 1: `c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))`
+  - For η = 1: `c(F) = y(F) × exp(-K)`
+- **Tax rate at rank F:** `τ(F) = 1 - c(F)/y(F)` (varies by income)
+- **Revenue constraint:** K is found such that `∫₀¹ [y(F) - c(F)] dF = tax_amount`
+
+**Key Properties:**
+
+1. **Progressive taxation**: Higher-income individuals pay a higher tax *rate* but experience the same utility loss as lower-income individuals
+2. **Welfare efficiency**: Compared to uniform fractional taxation ('r-uniform'), equal utility loss taxation typically yields higher aggregate utility for the same total tax revenue
+3. **Special case η=1**: When η=1 (log utility), the policy degenerates to uniform fractional taxation because the equal utility loss formula simplifies to a constant tax rate
+
+**Comparison of Tax Policies:**
+
+| Policy | Tax Rate | Utility Loss | Use Case |
+|--------|----------|--------------|----------|
+| `'r-uniform'` | Same for all | Higher for poor | DICE-like, simple |
+| `'u-uniform'` | Higher for rich | Same for all | Welfare-optimal |
+| `'u-max'` | 100% above threshold | Zero below threshold | Most progressive |
 
 ### Abatement Cap (mu_up)
 

@@ -804,6 +804,275 @@ def find_Fmin(
 
 
 #========================================================================================
+# Helper functions for three-region damage lookup
+#========================================================================================
+
+def _get_omega_at_F(
+    F,
+    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+    Fmin_prev, Fmax_prev, xi_edges,
+):
+    """
+    Get damage fraction at population rank F using three-region lookup.
+
+    Uses the previous timestep's three-region structure:
+    - Region 1 (F <= Fmin_prev): constant omega_Fmin_calc
+    - Region 2 (Fmin_prev < F < Fmax_prev): interpolate from omega_yi_calc
+    - Region 3 (F >= Fmax_prev): constant omega_Fmax_calc
+
+    Parameters
+    ----------
+    F : float or ndarray
+        Population rank(s) in [0, 1]
+    omega_Fmin_calc : float
+        Damage fraction for F <= Fmin_prev (Region 1)
+    omega_yi_calc : ndarray
+        Damage fractions at quadrature points (Region 2)
+    omega_Fmax_calc : float
+        Damage fraction for F >= Fmax_prev (Region 3)
+    Fmin_prev : float
+        Previous timestep's Fmin (Region 1/2 boundary)
+    Fmax_prev : float
+        Previous timestep's Fmax (Region 2/3 boundary)
+    xi_edges : ndarray
+        Standard quadrature edges in xi space [-1, 1]
+
+    Returns
+    -------
+    float or ndarray
+        Damage fraction(s) at F
+    """
+    F_arr = np.asarray(F)
+    scalar_input = np.ndim(F) == 0
+    if scalar_input:
+        F_arr = F_arr.reshape(1)
+
+    # Fast path: previous timestep covered full [0,1] range
+    if abs(Fmin_prev) < EPSILON and abs(Fmax_prev - 1.0) < EPSILON:
+        xi_vals = 2.0 * F_arr - 1.0
+        omega = stepwise_interpolate(xi_vals, omega_yi_calc, xi_edges)
+        return float(omega[0]) if scalar_input else omega
+
+    # Three-region damage lookup
+    in_region1 = F_arr <= Fmin_prev
+    in_region3 = F_arr >= Fmax_prev
+    in_region2 = ~(in_region1 | in_region3)
+
+    omega = np.zeros_like(F_arr, dtype=float)
+    omega[in_region1] = omega_Fmin_calc
+    omega[in_region3] = omega_Fmax_calc
+
+    if np.any(in_region2):
+        F_region2 = F_arr[in_region2]
+        x_region2 = (F_region2 - Fmin_prev) / (Fmax_prev - Fmin_prev)
+        xi_region2 = 2.0 * x_region2 - 1.0
+        omega[in_region2] = stepwise_interpolate(xi_region2, omega_yi_calc, xi_edges)
+
+    return float(omega[0]) if scalar_input else omega
+
+
+#========================================================================================
+# Equal utility loss taxation functions
+#========================================================================================
+
+def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
+    """
+    Compute post-tax income c(F) for equal-utility-loss taxation.
+
+    With CRRA utility U(c) = c^(1-η)/(1-η) for η≠1, or U(c) = ln(c) for η=1:
+    Equal utility loss means U(y) - U(c) = K for all incomes.
+
+    Solving for c:
+        c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))   for η ≠ 1
+        c(F) = y(F) * exp(-K)                     for η = 1
+
+    Parameters
+    ----------
+    y_F : float or ndarray
+        Pre-tax income(s)
+    K_utility_loss : float
+        Constant utility loss across all income levels
+    eta : float
+        Coefficient of relative risk aversion
+
+    Returns
+    -------
+    float or ndarray
+        Post-tax income(s)
+    """
+    y_F = np.asarray(y_F)
+    scalar_input = np.ndim(y_F) == 0
+    if scalar_input:
+        y_F = y_F.reshape(1)
+
+    # Handle η=1 (log utility) case
+    if abs(eta - 1.0) < EPSILON:
+        c_F = y_F * np.exp(-K_utility_loss)
+    else:
+        # c = [y^(1-η) - (1-η)K]^(1/(1-η))
+        inner = y_F ** (1.0 - eta) - (1.0 - eta) * K_utility_loss
+        # Ensure inner > 0 for valid result
+        inner = np.maximum(inner, EPSILON)
+        c_F = inner ** (1.0 / (1.0 - eta))
+
+    return float(c_F[0]) if scalar_input else c_F
+
+
+def find_K_equal_utility(
+    y_gross,
+    gini,
+    Omega_calc,
+    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+    Fmin_prev, Fmax_prev, xi_edges,
+    eta,
+    tax_amount,
+    use_empirical_lorenz,
+    tol,
+    xi, wi,
+):
+    """
+    Find utility loss constant K for equal-utility-loss taxation.
+
+    Returns K such that taxing everyone with equal utility loss yields tax_amount.
+
+    With CRRA utility U(c) = c^(1-η)/(1-η):
+    - Post-tax income: c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))
+    - Tax at rank F: τ(F) = y(F) - c(F)
+    - Revenue constraint: ∫₀¹ τ(F) dF = tax_amount
+
+    Special case η=1 (log utility):
+    - c(F) = y(F) * exp(-K)
+    - Tax rate: r = 1 - exp(-K) (constant for all F)
+    - This degenerates to uniform tax rate r = tax_amount / mean_income
+
+    Parameters
+    ----------
+    y_gross : float
+        Gross income per capita before damage
+    gini : float
+        Gini coefficient
+    Omega_calc : float
+        Aggregate climate damage fraction
+    omega_Fmin_calc : float
+        Damage fraction for F <= Fmin_prev (Region 1)
+    omega_yi_calc : ndarray
+        Damage fractions at quadrature points (Region 2)
+    omega_Fmax_calc : float
+        Damage fraction for F >= Fmax_prev (Region 3)
+    Fmin_prev : float
+        Previous timestep's Fmin
+    Fmax_prev : float
+        Previous timestep's Fmax
+    xi_edges : ndarray
+        Standard quadrature edges in xi space [-1, 1]
+    eta : float
+        Coefficient of relative risk aversion
+    tax_amount : float
+        Target per-capita tax revenue
+    use_empirical_lorenz : bool
+        If True, use Empirical Lorenz; if False, use Pareto
+    tol : float
+        Tolerance for root finding
+    xi : ndarray
+        Gauss-Legendre quadrature nodes on [-1, 1]
+    wi : ndarray
+        Gauss-Legendre quadrature weights
+
+    Returns
+    -------
+    float
+        Utility loss constant K such that equal-utility-loss taxation yields tax_amount
+    """
+    # If tax_amount is negligible, return K=0 (no tax)
+    if tax_amount < EPSILON:
+        return 0.0
+
+    # Mean damaged income (what we're taxing from)
+    y_damaged_mean = y_gross * (1.0 - Omega_calc)
+
+    # Special case η=1 (log utility): degenerates to uniform tax rate
+    # c = y * exp(-K), so tax rate r = 1 - exp(-K)
+    # Total tax = r * y_mean = tax_amount
+    # => r = tax_amount / y_mean
+    # => K = -ln(1 - r) = -ln(1 - tax_amount / y_mean)
+    if abs(eta - 1.0) < EPSILON:
+        r = tax_amount / y_damaged_mean
+        # Cap r to avoid log(0) or negative
+        r = min(r, 1.0 - EPSILON)
+        K = -np.log(1.0 - r)
+        return K
+
+    # Map quadrature from [-1, 1] to [0, 1] in F space
+    Fi = (xi + 1.0) / 2.0
+    Fwi = wi / 2.0
+
+    # Get pre-tax income y(F) = y_gross * dL/dF * (1 - omega)
+    if use_empirical_lorenz:
+        dLdF = L_empirical_lorenz_derivative(Fi, gini)
+    else:
+        dLdF = L_pareto_derivative(Fi, gini)
+
+    omega_Fi = _get_omega_at_F(
+        Fi,
+        omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+        Fmin_prev, Fmax_prev, xi_edges,
+    )
+    y_F = y_gross * dLdF * (1.0 - omega_Fi)
+
+    # For η < 1: utility is unbounded below as c → 0, and we need
+    # y^(1-η) - (1-η)K > 0 for all F, especially the poorest.
+    # So K < y_min^(1-η) / (1-η) (note: 1-η > 0 when η < 1)
+    #
+    # For η > 1: utility is negative and bounded, (1-η) < 0,
+    # so y^(1-η) - (1-η)K > 0 means K can be arbitrarily large.
+
+    y_min = np.min(y_F)
+
+    if eta < 1.0:
+        # K_max such that inner > 0 for y_min
+        # y_min^(1-η) - (1-η)*K > 0
+        # K < y_min^(1-η) / (1-η)
+        K_max = (y_min ** (1.0 - eta)) / (1.0 - eta) - EPSILON
+    else:
+        # For η > 1, K can be very large (utility is negative)
+        # But practically, limit to reasonable value
+        K_max = 1e10
+
+    def tax_revenue_minus_target(K):
+        # Post-tax income from equal utility loss formula
+        c_F = compute_post_tax_income_equal_utility(y_F, K, eta)
+
+        # Tax revenue
+        tax_revenue = np.sum(Fwi * (y_F - c_F))
+        return tax_revenue - tax_amount
+
+    # Check if K=0 already exceeds target (shouldn't happen, but be safe)
+    f_zero = tax_revenue_minus_target(0.0)
+    if f_zero >= 0:
+        return 0.0
+
+    # Check if K_max gives enough revenue
+    f_max = tax_revenue_minus_target(K_max)
+    if f_max < 0:
+        # Even max K doesn't give enough revenue
+        # Return K_max as best we can do
+        return K_max
+
+    # Bracketing: K ∈ [0, K_max], f(0) < 0 < f(K_max)
+    # Use Brent's method
+    sol = root_scalar(
+        tax_revenue_minus_target,
+        bracket=[0.0, K_max],
+        method="brentq",
+        xtol=tol,
+    )
+    if not sol.converged:
+        raise RuntimeError("root_scalar did not converge for find_K_equal_utility")
+
+    return sol.root
+
+
+#========================================================================================
 # Stepwise interpolation and integration utilities
 #========================================================================================
 
