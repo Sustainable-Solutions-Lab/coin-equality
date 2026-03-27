@@ -13,6 +13,9 @@ from src.distribution_utilities import (
     y_net_of_F,
     find_Fmax,
     find_Fmin,
+    find_K_equal_utility,
+    compute_post_tax_income_equal_utility,
+    _get_omega_at_F,
     L_pareto,
     L_pareto_derivative,
     L_empirical_lorenz,
@@ -346,6 +349,7 @@ def calculate_tendencies(state, params,
     Fmax = 1.0
     min_y_net = 0.0
     max_y_net = 0.0
+    K_equal_utility = 0.0  # For 'u-uniform' tax policy
 
     #========================================================================================
     # Main calculations
@@ -458,6 +462,11 @@ def calculate_tendencies(state, params,
 
             # Compute abatement cost from mu using standard DICE formula
             abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
+
+            # Cap abatement cost to ensure lambda_abate < 1.0 and y_net > 0.
+            # With MAC-based optimization, the optimizer controls marginal cost, not total cost.
+            # High MAC values can produce abatement costs exceeding available income.
+            abateCost_amount = min(abateCost_amount, (1.0 - EPSILON) * y_damaged_calc)
         else:
             mu = 0.0
             abateCost_amount = 0.0
@@ -505,9 +514,11 @@ def calculate_tendencies(state, params,
         # Pre-compute uniform tax rate when policy is uniform so Fmin uses taxed income
         # Uniform tax always covers full budget (abatement + redistribution)
         # Fmin is calculated AFTER uniform tax to ensure equal consumption below Fmin
-        if income_dependent_tax_policy:
+        if income_dependent_tax_policy == 'u-max':
             uniform_tax_rate = 0.0
-        else:
+        elif income_dependent_tax_policy == 'u-uniform':
+            uniform_tax_rate = 0.0  # Variable rates computed per F via K_equal_utility
+        else:  # 'r-uniform'
             uniform_tax_rate = (abateCost_amount - consumption_extra + redistribution_amount) / y_damaged_calc
 
         #------------------------------------------------------
@@ -545,7 +556,7 @@ def calculate_tendencies(state, params,
 
  
         # For income-dependent tax, find Fmax such that tax matches target
-        if income_dependent_tax_policy:
+        if income_dependent_tax_policy == 'u-max':
             # Only find Fmax if there's actually something to tax
             if tax_amount > EPSILON:
                 # We want to find the value of Fmax such that if everyone above Fmax made
@@ -575,7 +586,21 @@ def calculate_tendencies(state, params,
             else:
                 # No tax amount, so no income-dependent taxation
                 Fmax = 1.0
-        else:
+        elif income_dependent_tax_policy == 'u-uniform':
+            # Equal utility loss taxation: everyone pays, variable rates via K
+            Fmax = 1.0
+            if tax_amount > EPSILON:
+                t_before_find_K = time.time()
+                K_equal_utility = find_K_equal_utility(
+                    y_gross, gini, Omega_calc,
+                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+                    Fmin_prev, Fmax_prev, xi_edges,
+                    eta, tax_amount, use_empirical_lorenz,
+                    tol=params['loose_epsilon'],
+                    xi=xi, wi=wi,
+                )
+                _timing_stats['find_Fmax_time'] += time.time() - t_before_find_K
+        else:  # 'r-uniform'
             # Uniform tax already computed
             Fmax = 1.0
 
@@ -636,16 +661,32 @@ def calculate_tendencies(state, params,
         _timing_stats['policy_calc_time'] += t_before_seg1 - t_setup
 
         if Fmin > EPSILON:
-            # People below Fmin pay uniform tax on Lorenz income, then receive untaxed subsidy
+            # People below Fmin pay tax on Lorenz income, then receive untaxed subsidy
             # The subsidy lifts them to the income level at Fmin
-            min_y_net = y_net_of_F(
-                Fmin, Fmin, Fmax,
-                y_gross,
-                omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-                Fmin_prev, Fmax_prev, xi_edges,
-                uniform_tax_rate, uniform_redistribution_amount, gini,
-                use_empirical_lorenz,
-            )
+            if income_dependent_tax_policy == 'u-uniform':
+                # Equal utility loss taxation: compute pre-tax income, apply K formula, add redistribution
+                if use_empirical_lorenz:
+                    dLdF_Fmin = L_empirical_lorenz_derivative(Fmin, gini)
+                else:
+                    dLdF_Fmin = L_pareto_derivative(Fmin, gini)
+                omega_at_Fmin = _get_omega_at_F(
+                    Fmin,
+                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+                    Fmin_prev, Fmax_prev, xi_edges,
+                )
+                y_pretax_Fmin = y_gross * dLdF_Fmin * (1.0 - omega_at_Fmin)
+                # Apply equal utility loss tax
+                c_Fmin = compute_post_tax_income_equal_utility(y_pretax_Fmin, K_equal_utility, eta)
+                min_y_net = c_Fmin + uniform_redistribution_amount
+            else:
+                min_y_net = y_net_of_F(
+                    Fmin, Fmin, Fmax,
+                    y_gross,
+                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+                    Fmin_prev, Fmax_prev, xi_edges,
+                    uniform_tax_rate, uniform_redistribution_amount, gini,
+                    use_empirical_lorenz,
+                )
             min_consumption = min_y_net * (1 - s)
 
             # Utility at this income level
@@ -719,14 +760,30 @@ def calculate_tendencies(state, params,
         t_before_seg2 = time.time()
         if Fmax - Fmin > EPSILON and len(Fi_region2) > 0:
             # Evaluate income at each remapped quadrature point
-            y_net_region2 = y_net_of_F(
-                Fi_region2, Fmin, Fmax,
-                y_gross,
-                omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-                Fmin_prev, Fmax_prev, xi_edges,
-                uniform_tax_rate, uniform_redistribution_amount, gini,
-                use_empirical_lorenz,
-            )
+            if income_dependent_tax_policy == 'u-uniform':
+                # Equal utility loss taxation: compute pre-tax income, apply K formula, add redistribution
+                if use_empirical_lorenz:
+                    dLdF_region2 = L_empirical_lorenz_derivative(Fi_region2, gini)
+                else:
+                    dLdF_region2 = L_pareto_derivative(Fi_region2, gini)
+                omega_region2_prev = _get_omega_at_F(
+                    Fi_region2,
+                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+                    Fmin_prev, Fmax_prev, xi_edges,
+                )
+                y_pretax_region2 = y_gross * dLdF_region2 * (1.0 - omega_region2_prev)
+                # Apply equal utility loss tax
+                c_region2 = compute_post_tax_income_equal_utility(y_pretax_region2, K_equal_utility, eta)
+                y_net_region2 = c_region2 + uniform_redistribution_amount
+            else:
+                y_net_region2 = y_net_of_F(
+                    Fi_region2, Fmin, Fmax,
+                    y_gross,
+                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
+                    Fmin_prev, Fmax_prev, xi_edges,
+                    uniform_tax_rate, uniform_redistribution_amount, gini,
+                    use_empirical_lorenz,
+                )
 
             # Compute consumption and utility
             consumption_region2 = y_net_region2 * (1 - s) 
@@ -887,6 +944,7 @@ def calculate_tendencies(state, params,
             'tax_amount': tax_amount,
             'uniform_redistribution_amount': uniform_redistribution_amount,
             'uniform_tax_rate': uniform_tax_rate,
+            'K_equal_utility': K_equal_utility,
             'Fmin': Fmin,
             'Fmax': Fmax,
             'min_y_net': min_y_net,
@@ -1043,6 +1101,7 @@ def integrate_model(config, store_detailed_output=True):
             'uniform_redistribution_amount': np.zeros(n_steps),
             'tax_amount': np.zeros(n_steps),
             'uniform_tax_rate': np.zeros(n_steps),
+            'K_equal_utility': np.zeros(n_steps),
             'Fmin': np.zeros(n_steps),
             'Fmax': np.zeros(n_steps),
             'aggregate_utility': np.zeros(n_steps),
@@ -1133,6 +1192,7 @@ def integrate_model(config, store_detailed_output=True):
             results['tax_amount'][i] = outputs['tax_amount']
             results['uniform_redistribution_amount'][i] = outputs['uniform_redistribution_amount']
             results['uniform_tax_rate'][i] = outputs['uniform_tax_rate']
+            results['K_equal_utility'][i] = outputs['K_equal_utility']
 
             # Store climate variables
             results['delta_T'][i] = outputs['delta_T']
@@ -1270,7 +1330,7 @@ def create_derived_variables(results):
     max_y_net = results['max_y_net']
     y_net_yi = results['y_net_yi']
 
-    income_dep_tax = np.array([p['income_dependent_tax_policy'] for p in params_list], dtype=bool)
+    income_dep_tax = np.array([p['income_dependent_tax_policy'] for p in params_list])
 
     # Per-capita consumption by region
     c_min = np.maximum((1.0 - s_array) * min_y_net, EPSILON)          # shape (n_steps,)
@@ -1308,7 +1368,7 @@ def create_derived_variables(results):
     #   mu_dollar_cost = (1-s) * c_max^(-eta) + s * mu_dollar_numeraire
     # Under uniform tax, the cost incidence matches the numeraire, so mu_dollar_cost = mu_dollar_numeraire.
     mu_dollar_cost = np.where(
-        income_dep_tax & ((1.0 - Fmax) > 1e-12),
+        (income_dep_tax == 'u-max') & ((1.0 - Fmax) > 1e-12),
         (1.0 - s_array) * c_max ** (-eta_array) + s_array * mu_dollar_numeraire,
         mu_dollar_numeraire
     )

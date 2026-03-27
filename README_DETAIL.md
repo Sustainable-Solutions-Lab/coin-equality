@@ -89,9 +89,10 @@ The differential equation solver uses climate damage from the previous timestep 
 10. **Fmin, uniform_redistribution_amount** from income_dependent_redistribution_policy:
    - If income-dependent: find_Fmin() computes critical rank using root finding with analytical Lorenz integrals
    - If uniform: Fmin = 0, uniform_redistribution = redistribution_amount
-11. **Fmax, uniform_tax_rate** from income_dependent_tax_policy:
-   - If income-dependent: find_Fmax() computes critical rank using root finding with analytical Lorenz integrals
-   - If uniform: Fmax = 1.0, uniform_tax_rate = (abateCost + redistribution) / (y_gross * (1 - Omega))
+11. **Fmax, uniform_tax_rate, K_equal_utility** from income_dependent_tax_policy:
+   - If 'u-max': find_Fmax() computes critical rank using root finding with analytical Lorenz integrals
+   - If 'r-uniform': Fmax = 1.0, uniform_tax_rate = (abateCost + redistribution) / (y_gross * (1 - Omega))
+   - If 'u-uniform': Fmax = 1.0, uniform_tax_rate = 0, K_equal_utility = find_K_equal_utility() for equal utility loss
 
 **Segment-wise Integration (F-space with Fi_edges):**
 12. **Fi, Fi_edges** = transform xi, xi_edges from [-1,1] to [0,1]
@@ -202,7 +203,7 @@ where:
 
 **Finding Fmax (Income-Dependent Tax Threshold):**
 
-When `income_dependent_tax_policy = true`, Fmax is the minimum income rank paying progressive taxation.
+When `income_dependent_tax_policy = 'u-max'`, Fmax is the minimum income rank paying progressive taxation.
 
 The calculation finds Fmax such that progressive taxation on those above Fmax generates the target tax revenue:
 
@@ -211,6 +212,28 @@ tax_amount = ∫_Fmax^1 [y_damaged(F) - y_damaged(Fmax)] dF
 ```
 
 where `y_damaged(F) = y_gross * dL/dF(F) * (1 - omega(F))`
+
+**Finding K_equal_utility (Equal Utility Loss Taxation):**
+
+When `income_dependent_tax_policy = 'u-uniform'`, taxation is applied such that everyone experiences the same utility loss K.
+
+With CRRA utility U(c) = c^(1-η)/(1-η) for η≠1, or U(c) = ln(c) for η=1:
+
+```
+U(y_pretax) - U(c_posttax) = K  for all income levels
+```
+
+Solving for post-tax consumption:
+- For η ≠ 1: `c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))`
+- For η = 1: `c(F) = y(F) × exp(-K)`
+
+K is found via root-finding such that total tax revenue equals the target:
+
+```
+tax_amount = ∫₀¹ [y_damaged(F) - c(F)] dF
+```
+
+This produces progressive taxation (higher rates for higher incomes) while ensuring equal utility sacrifice across all income levels.
 
 **Budget Flow:**
 
@@ -230,11 +253,18 @@ This total budget is collected via:
 - Person at F=0.1: pays 2% tax on Lorenz income, receives redistribution subsidy
 - Person at F=0.5: pays 2% tax on Lorenz income, receives no redistribution
 
-*Example 2: Income-dependent tax, uniform redistribution*
+*Example 2: Income-dependent tax ('u-max'), uniform redistribution*
 - Tax: Top 10% (Fmax=0.9) pay progressive tax
 - Redistribution: Everyone receives equal per-capita payment
 - Person at F=0.5: pays no progressive tax, receives uniform redistribution
 - Person at F=0.95: pays progressive tax, also receives uniform redistribution
+
+*Example 3: Equal utility loss tax ('u-uniform'), uniform redistribution*
+- Tax: Everyone pays at a rate that produces equal utility loss K
+- Redistribution: Everyone receives equal per-capita payment
+- Person at F=0.1 (poor): pays ~0.5% tax rate, loses utility K
+- Person at F=0.9 (rich): pays ~3% tax rate, loses same utility K
+- Result: Higher aggregate utility than 'r-uniform' for same total tax revenue
 
 ### Core Components
 

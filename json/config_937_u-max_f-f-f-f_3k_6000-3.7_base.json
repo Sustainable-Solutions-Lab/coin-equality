@@ -1,4 +1,4 @@
-venv{
+{
     "run_name": "config_937_u-max_f-f-f-f_3k_6000-3.7_base",
     "description": "Config 937: No mu rate constraints (t-f-t-f-f), 100k evals",
     "scalar_parameters": {
