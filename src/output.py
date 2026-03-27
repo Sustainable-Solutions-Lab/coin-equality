@@ -793,8 +793,9 @@ def _create_plot_page_new(t, results, chart_specs, group_name, run_name, pdf, pa
                 # Use all data points (excluding first time step)
                 all_data = np.concatenate([results[var][1:] for var in var_list])
 
-            data_min = np.min(all_data)
-            data_max = np.max(all_data)
+            finite_data = all_data[np.isfinite(all_data)]
+            data_min = np.min(finite_data) if len(finite_data) > 0 else -1.0
+            data_max = np.max(finite_data) if len(finite_data) > 0 else 1.0
 
             # Add padding to the data range (5% on each side)
             data_range = data_max - data_min
