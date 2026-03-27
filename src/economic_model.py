@@ -462,6 +462,11 @@ def calculate_tendencies(state, params,
 
             # Compute abatement cost from mu using standard DICE formula
             abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
+
+            # Cap abatement cost to ensure lambda_abate < 1.0 and y_net > 0.
+            # With MAC-based optimization, the optimizer controls marginal cost, not total cost.
+            # High MAC values can produce abatement costs exceeding available income.
+            abateCost_amount = min(abateCost_amount, (1.0 - EPSILON) * y_damaged_calc)
         else:
             mu = 0.0
             abateCost_amount = 0.0
