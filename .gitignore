@@ -51,3 +51,25 @@ json/older/
 
 # Archived scripts
 scripts/archive/
+
+# Archive directory (old configs 022-036, hyperbolic/quadratic experiments)
+archive/
+
+# PDFs and reference materials
+*.pdf
+
+# HTML outputs
+*.html
+
+# Hand calculations and scratch work
+hand_calculation.md
+scripts/extract_*.py
+scripts/toy_model_*.py
+scripts/verify_*.py
+scripts/plot_config_035_combined.py
+
+# Literature comparisons (local notes)
+LITERATURE_COMPARISON_TABLE.md
+
+# Lamprini working folder
+Lamprini/
