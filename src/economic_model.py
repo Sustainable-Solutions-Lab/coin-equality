@@ -664,22 +664,11 @@ def calculate_tendencies(state, params,
             # People below Fmin pay tax on Lorenz income, then receive untaxed subsidy
             # The subsidy lifts them to the income level at Fmin
             if income_dependent_tax_policy == 'u-uniform':
-                # Equal utility loss taxation: compute pre-tax income, apply K formula, add redistribution
-                if use_empirical_lorenz:
-                    dLdF_Fmin = L_empirical_lorenz_derivative(Fmin, gini)
-                else:
-                    dLdF_Fmin = L_pareto_derivative(Fmin, gini)
-                omega_at_Fmin = _get_omega_at_F(
-                    Fmin,
-                    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-                    Fmin_prev, Fmax_prev, xi_edges,
+                raise ValueError(
+                    "u-uniform tax policy does not support redistribution (Fmin > 0). "
+                    "Fmin must be 0 for equal utility loss taxation."
                 )
-                y_pretax_Fmin = y_gross * dLdF_Fmin * (1.0 - omega_at_Fmin)
-                # Apply equal utility loss tax
-                c_Fmin = compute_post_tax_income_equal_utility(y_pretax_Fmin, K_equal_utility, eta)
-                min_y_net = c_Fmin + uniform_redistribution_amount
-            else:
-                min_y_net = y_net_of_F(
+            min_y_net = y_net_of_F(
                     Fmin, Fmin, Fmax,
                     y_gross,
                     omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,

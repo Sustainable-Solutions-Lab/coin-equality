@@ -911,8 +911,8 @@ def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
     else:
         # c = [y^(1-η) - (1-η)K]^(1/(1-η))
         inner = y_F ** (1.0 - eta) - (1.0 - eta) * K_utility_loss
-        # Ensure inner > 0 for valid result
-        inner = np.maximum(inner, EPSILON)
+        # Allow inner = 0 (taxed to zero income) when K exceeds max utility loss
+        inner = np.maximum(inner, 0.0)
         c_F = inner ** (1.0 / (1.0 - eta))
 
     return float(c_F[0]) if scalar_input else c_F
@@ -1019,24 +1019,10 @@ def find_K_equal_utility(
     )
     y_F = y_gross * dLdF * (1.0 - omega_Fi)
 
-    # For η < 1: utility is unbounded below as c → 0, and we need
-    # y^(1-η) - (1-η)K > 0 for all F, especially the poorest.
-    # So K < y_min^(1-η) / (1-η) (note: 1-η > 0 when η < 1)
-    #
-    # For η > 1: utility is negative and bounded, (1-η) < 0,
-    # so y^(1-η) - (1-η)K > 0 means K can be arbitrarily large.
-
-    y_min = np.min(y_F)
-
-    if eta < 1.0:
-        # K_max such that inner > 0 for y_min
-        # y_min^(1-η) - (1-η)*K > 0
-        # K < y_min^(1-η) / (1-η)
-        K_max = (y_min ** (1.0 - eta)) / (1.0 - eta) - EPSILON
-    else:
-        # For η > 1, K can be very large (utility is negative)
-        # But practically, limit to reasonable value
-        K_max = 1e10
+    # For all η, use practical upper bound
+    # The revenue calculation handles c=0 cases automatically via
+    # compute_post_tax_income_equal_utility using np.maximum(inner, 0.0)
+    K_max = 1e10
 
     def tax_revenue_minus_target(K):
         # Post-tax income from equal utility loss formula
@@ -1054,9 +1040,10 @@ def find_K_equal_utility(
     # Check if K_max gives enough revenue
     f_max = tax_revenue_minus_target(K_max)
     if f_max < 0:
-        # Even max K doesn't give enough revenue
-        # Return K_max as best we can do
-        return K_max
+        raise ValueError(
+            f"Cannot raise required tax_amount={tax_amount:.6g} with equal utility loss taxation. "
+            f"Maximum possible revenue (taxing everyone to zero) is {tax_amount + f_max:.6g}."
+        )
 
     # Bracketing: K ∈ [0, K_max], f(0) < 0 < f(K_max)
     # Use Brent's method
