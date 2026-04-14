@@ -75,4 +75,9 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
 # To resurrect redistribution functionality, make this a config parameter < 1.0
 NON_DISTRIBUTION_FRACTION = 1.0
 
+# Maximum allowed base damage fraction from temperature
+# Caps Omega_base to prevent economic collapse at extreme temperatures
+# At Omega_base = 0.8, 80% of GDP is destroyed by climate damage
+OMEGA_BASE_MAX = 0.8
+
 

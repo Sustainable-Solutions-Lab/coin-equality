@@ -13,7 +13,7 @@ import time
 from scipy.interpolate import PchipInterpolator
 from src.economic_model import integrate_model
 from src.parameters import ModelConfiguration
-from src.constants import EPSILON
+from src.constants import EPSILON, NEG_BIGNUM
 
 
 def requires_gradient(algorithm_name):
@@ -480,7 +480,13 @@ class UtilityOptimizer:
         )
 
         # Use store_detailed_output=False during optimization for better performance
-        results = integrate_model(config, store_detailed_output=False)
+        # ValueError can occur when equal-utility-loss taxation cannot raise enough revenue
+        # (e.g., during optimizer exploration of extreme low-abatement trajectories).
+        # Return NEG_BIGNUM to signal infeasible control trajectory to the optimizer.
+        try:
+            results = integrate_model(config, store_detailed_output=False)
+        except ValueError:
+            return NEG_BIGNUM
 
         rho = self.base_config.scalar_params.rho
         t = results['t']

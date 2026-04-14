@@ -24,7 +24,7 @@ from src.distribution_utilities import (
     stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, NON_DISTRIBUTION_FRACTION
+from src.constants import EPSILON, NEG_BIGNUM, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, NON_DISTRIBUTION_FRACTION, OMEGA_BASE_MAX
 
 
 def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
@@ -359,7 +359,7 @@ def calculate_tendencies(state, params,
 
     # Base damage from temperature (capped just below 1.0 to avoid division by zero)
     # Be careful when used not to produce effective Omega values >= 1.0
-    Omega_base = psi1 * delta_T + psi2 * (delta_T ** 2)
+    Omega_base = np.minimum(OMEGA_BASE_MAX, psi1 * delta_T + psi2 * (delta_T ** 2))
 
     if income_dependent_damage_distribution:
         # Reconstruct damage fractions from ratios stored at previous timestep
