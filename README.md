@@ -300,79 +300,57 @@ The model uses several time-dependent exogenous functions specified in the `time
 
 **Eland**: Exogenous land-use emissions that decline exponentially over time. At t_base=2020, Eland ≈ 4.5 GtCO2/yr with a decline rate of -2.107%/yr.
 
-### Policy Switches
+### Policy Configuration
 
-The model has 5 boolean switches controlling different policy features. Three are **primary switches** and two are **sub-switches** that are only meaningful when their parent switch is enabled:
+The model has a single runtime switch (`income_dependent_aggregate_damage`) and a single tax-progressivity knob (`tax_equity_knob`). Everything else — tax policy, damage distribution shape, redistribution — is fixed by code choice.
 
-#### Primary Switches
+**Hard-coded policy assumptions** (no longer runtime-configurable):
+- **Tax policy**: the continuous equal-utility-loss schedule described below (previously `'u-continuous'`).
+- **No redistribution**: all policy spending goes to abatement.
+- **Income-dependent damage distribution**: climate damage is weighted toward lower incomes via `y_damage_distribution_exponent`. To recover uniform damage, set `y_damage_distribution_exponent = 0`.
 
-1. **`income_dependent_damage_distribution`** (boolean, default: true)
-   - Controls whether climate damage varies by income level
-   - When true: Poor people experience higher damage (exponential in income)
-   - When false: Everyone experiences the same damage (uniform)
-   - Parent switch for: `income_dependent_aggregate_damage`
+**Runtime switch:**
 
-2. **`income_redistribution`** (boolean, default: true)
-   - Controls whether income redistribution is enabled
-   - When true: Redistributes from high to low income according to `redistribution_amount`
-   - When false: No redistribution occurs
-   - Parent switch for: `income_dependent_redistribution_policy`
+- **`income_dependent_aggregate_damage`** (boolean)
+   - When true: aggregate damage is computed directly from the per-quantile income-weighted sum of damage fractions; richer economies experience a lower aggregate damage fraction.
+   - When false: the per-quantile damage array is rescaled so the aggregate damage fraction matches `Omega_base` (temperature-only DICE-like scaling).
 
-3. **`income_dependent_tax_policy`** (string, default: 'r-uniform')
-   - Controls the tax policy type
-   - `'u-max'`: Progressive tax using `find_Fmax()` to determine tax threshold (tax richest)
-   - `'r-uniform'`: Uniform fractional tax rate applied to all income (DICE-like)
-   - `'u-uniform'`: Equal utility loss taxation (see below)
+#### Tax policy: continuous equity knob
 
-#### Sub-Switches (Only Meaningful with Parent Enabled)
+The tax schedule is the equal-utility-loss formula with a progressivity-adjusted exponent:
 
-4. **`income_dependent_aggregate_damage`** (boolean, default: true)
-   - **Parent switch: `income_dependent_damage_distribution`**
-   - **Only meaningful when parent is true**
-   - Controls how aggregate damage is calculated when damage varies by income
-   - When true: Aggregate damage computed directly from income distribution
-   - When false: Rescale damage distribution to match `Omega_base * y_net_aggregate`, where `y_net_aggregate` is mean net income after taxes/transfers
-   - Note: When `income_dependent_damage_distribution = false`, damages are naturally proportional to `y_net`, so this flag has no effect
-   - Code enforces: Only checked when `income_dependent_damage_distribution` is true
+```
+η_eff = 1 + (f / (1 − f)) · (η − 1)
+```
 
-5. **`income_dependent_redistribution_policy`** (boolean, default: false)
-   - **Parent switch: `income_redistribution`**
-   - **Only meaningful when parent is true**
-   - Controls whether redistribution is targeted or uniform
-   - When true: Targeted to lowest incomes using `find_Fmin()` to determine threshold
-   - When false: Uniform per-capita redistribution to all
-   - Code enforces: Only checked when `income_redistribution` is true
+where `f = tax_equity_knob ∈ [0, 0.99]` and `η` is the CRRA parameter.
 
-**Important**: The code automatically enforces these dependencies. Sub-switches are only evaluated when their parent switch is enabled, ensuring logically consistent behavior.
+| `f`   | `η_eff`   | Resulting schedule                          | Behavior                              |
+|:-----:|:---------:|:--------------------------------------------|:--------------------------------------|
+| 0     | 1         | `c = y · exp(−K)`                           | Flat fractional rate (DICE-like)      |
+| 0.5   | η         | Equal-utility-loss formula                  | Same utility loss for all earners     |
+| → 1   | → ∞       | Sharp threshold on income                   | Tax concentrated on highest incomes   |
 
-#### Equal Utility Loss Taxation ('u-uniform')
+At `η = 1`, `η_eff = 1` for any `f` and the knob is degenerate — the tax is always a flat fractional rate.
 
-The `'u-uniform'` tax policy implements equal utility loss taxation, where everyone pays a tax that results in the same utility loss regardless of income level. This is more welfare-efficient than uniform fractional taxation because it accounts for the diminishing marginal utility of income.
+**Tax schedule** (closed form):
 
-**Mathematical Formulation:**
+- For `η_eff ≠ 1`: `c(F) = [y(F)^(1−η_eff) − (1−η_eff)K]^(1/(1−η_eff))`
+- For `η_eff = 1`: `c(F) = y(F) · exp(−K)`
 
-With CRRA utility U(c) = c^(1-η)/(1-η) for η≠1, or U(c) = ln(c) for η=1:
+`K` is solved numerically via Brent's method in log-K space, in normalized income units so the solver is stable at large `η_eff` and realistic income scales. The revenue constraint is `∫₀¹ [y(F) − c(F)] dF = tax_amount`.
 
-- **Equal utility loss condition:** U(y) - U(c) = K for all incomes, where K is a constant
-- **Post-tax income:**
-  - For η ≠ 1: `c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))`
-  - For η = 1: `c(F) = y(F) × exp(-K)`
-- **Tax rate at rank F:** `τ(F) = 1 - c(F)/y(F)` (varies by income)
-- **Revenue constraint:** K is found such that `∫₀¹ [y(F) - c(F)] dF = tax_amount`
+**Derivation:** Starting from `U = c^(1−η)/(1−η)` (so `dc/du = c^η` for equal utility loss), take a marginal tax rate `r = r0·c^(η_tax)`. Tax amount per person is `tax = r·c = r0·c^(η_tax+1)`. Iterating that infinitesimally to a finite revenue yields the ODE `dc/dt = −r0·c^(η_tax+1)`, whose closed form is the schedule above with `η_eff = η_tax + 1`. Monotonicity `dc/dy > 0` holds automatically, so no explicit iteration loop is needed.
 
-**Key Properties:**
+**Usage:**
 
-1. **Progressive taxation**: Higher-income individuals pay a higher tax *rate* but experience the same utility loss as lower-income individuals
-2. **Welfare efficiency**: Compared to uniform fractional taxation ('r-uniform'), equal utility loss taxation typically yields higher aggregate utility for the same total tax revenue
-3. **Special case η=1**: When η=1 (log utility), the policy degenerates to uniform fractional taxation because the equal utility loss formula simplifies to a constant tax rate
-
-**Comparison of Tax Policies:**
-
-| Policy | Tax Rate | Utility Loss | Use Case |
-|--------|----------|--------------|----------|
-| `'r-uniform'` | Same for all | Higher for poor | DICE-like, simple |
-| `'u-uniform'` | Higher for rich | Same for all | Welfare-optimal |
-| `'u-max'` | 100% above threshold | Zero below threshold | Most progressive |
+```json
+"scalar_parameters": {
+    "tax_equity_knob": 0.5,
+    "eta": 2.0,
+    "income_dependent_aggregate_damage": false
+}
+```
 
 ### Abatement Cap (mu_up)
 

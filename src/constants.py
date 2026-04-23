@@ -70,14 +70,15 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
     EMPIRICAL_LORENZ_W3 / (EMPIRICAL_LORENZ_P3 + 1.0)
 )
 
-# Non-distribution fraction for abatement/redistribution split
-# Setting to 1.0 means all policy spending goes to abatement (no redistribution)
-# To resurrect redistribution functionality, make this a config parameter < 1.0
-NON_DISTRIBUTION_FRACTION = 1.0
-
 # Maximum allowed base damage fraction from temperature
 # Caps Omega_base to prevent economic collapse at extreme temperatures
 # At Omega_base = 0.8, 80% of GDP is destroyed by climate damage
 OMEGA_BASE_MAX = 0.8
+
+# Maximum allowed value for tax_equity_knob (f) in the 'u-continuous' tax policy.
+# The mapping eta_eff = 1 + f/(1-f)*(eta-1) has a singularity at f = 1.
+# Capping at 0.99 approximates the "tax richest" limit without blowing up numerics;
+# users wanting the exact sharp-threshold behavior should use income_dependent_tax_policy='u-max'.
+TAX_EQUITY_KNOB_MAX = 0.99
 
 

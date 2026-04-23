@@ -323,18 +323,11 @@ class ScalarParameters:
     income_dependent_aggregate_damage : bool
         If True, aggregate damage decreases as world gets richer
         If False, damage fraction depends only on temperature (DICE-like)
-    income_dependent_damage_distribution : bool
-        If True, damage is weighted towards low-income (uses y_damage_distribution_exponent)
-        If False, damage is distributed uniformly across income distribution
-    income_dependent_tax_policy : str
-        Tax policy type: 'u-max' (progressive, tax richest), 'r-uniform' (uniform fractional, DICE-like), 'u-uniform' (equal utility loss, future)
-    income_redistribution : bool
-        If True, enable redistribution (revenues can be redistributed)
-        If False, no redistribution (all revenues go to abatement)
-    income_dependent_redistribution_policy : bool
-        If True, targeted redistribution (benefits to lowest income)
-        If False, uniform dividend (equal per-capita payment)
-        Only applies when income_redistribution=True
+    tax_equity_knob : float
+        Progressivity knob f in [0, TAX_EQUITY_KNOB_MAX] for the single tax policy.
+        eta_effective = 1 + f/(1-f) * (eta - 1). When eta > 1: f=0 gives a flat fractional
+        rate; f=0.5 gives equal utility loss; f -> 1 concentrates tax on the highest incomes.
+        At eta = 1 the knob is degenerate (any f yields a flat rate, the log-utility branch).
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz formulation L(F) = F^p * (1 - (1-F)^q)
         If False, use Pareto-Lorenz formulation (default)
@@ -344,7 +337,7 @@ class ScalarParameters:
         so they can be parameterized for relative time (0 = base year).
         Default: 2020.0
     loose_epsilon : float
-        Convergence tolerance for root-finding in find_Fmax and find_Fmin.
+        Convergence tolerance for Brent's-method root solve in find_K_equal_utility.
         Default: 1e-8
     """
     alpha: float
@@ -359,11 +352,8 @@ class ScalarParameters:
     fract_gdp: float
     theta2: float
     K_initial: float
+    tax_equity_knob: float
     income_dependent_aggregate_damage: bool
-    income_dependent_damage_distribution: bool
-    income_dependent_tax_policy: str
-    income_redistribution: bool
-    income_dependent_redistribution_policy: bool
     use_empirical_lorenz: bool = False
     t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
     mu_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
@@ -374,14 +364,19 @@ class ScalarParameters:
     # Extra consumption pulse parameters (for sensitivity analysis)
     year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
-    # Convergence tolerance for root-finding (find_Fmax, find_Fmin)
+    # Convergence tolerance for the tax-amount root solve in find_K_equal_utility
     loose_epsilon: float = 1e-8
 
     def __post_init__(self):
-        """Set defaults for mu_max if not provided."""
-        from src.constants import INVERSE_EPSILON
+        """Set mu_max default and validate tax-policy requirements."""
+        from src.constants import INVERSE_EPSILON, TAX_EQUITY_KNOB_MAX
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
+
+        if not (0.0 <= self.tax_equity_knob <= TAX_EQUITY_KNOB_MAX):
+            raise ValueError(
+                f"tax_equity_knob must be in [0.0, {TAX_EQUITY_KNOB_MAX}], got {self.tax_equity_knob}."
+            )
 
 
 @dataclass
@@ -722,10 +717,7 @@ def evaluate_params_at_time(t, config):
         'y_damage_distribution_exponent': sp.y_damage_distribution_exponent,
         'y_net_reference': sp.y_net_reference,
         'income_dependent_aggregate_damage': sp.income_dependent_aggregate_damage,
-        'income_dependent_damage_distribution': sp.income_dependent_damage_distribution,
-        'income_dependent_tax_policy': sp.income_dependent_tax_policy,
-        'income_redistribution': sp.income_redistribution,
-        'income_dependent_redistribution_policy': sp.income_dependent_redistribution_policy,
+        'tax_equity_knob': sp.tax_equity_knob,
         'k_climate': sp.k_climate,
         'eta': sp.eta,
         'rho': sp.rho,

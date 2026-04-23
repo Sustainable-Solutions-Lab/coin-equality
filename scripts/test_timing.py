@@ -59,13 +59,11 @@ if stats['call_count'] == 0:
     sys.exit(1)
 
 # Calculate sum of all components
-# Note: find_Fmax_time and find_Fmin_time are subsets of policy_calc_time, so don't double-count
+# Note: find_K_time is a subset of policy_calc_time, so don't double-count
 components = [
     'setup_time',
     'policy_calc_time',
-    'segment1_time',
     'segment2_time',
-    'segment3_time',
     'utility_time',
     'damage_agg_time',
     'climate_time',
