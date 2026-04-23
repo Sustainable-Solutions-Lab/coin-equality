@@ -302,7 +302,7 @@ The model uses several time-dependent exogenous functions specified in the `time
 
 ### Policy Configuration
 
-The model has a single runtime switch (`income_dependent_aggregate_damage`) and a single tax-progressivity knob (`tax_equity_knob`). Everything else — tax policy, damage distribution shape, redistribution — is fixed by code choice.
+The model has a single runtime switch (`income_dependent_aggregate_damage`) and a single tax-progressivity knob (`tax_equity`). Everything else — tax policy, damage distribution shape, redistribution — is fixed by code choice.
 
 **Hard-coded policy assumptions** (no longer runtime-configurable):
 - **Tax policy**: the continuous equal-utility-loss schedule described below (previously `'u-continuous'`).
@@ -320,18 +320,18 @@ The model has a single runtime switch (`income_dependent_aggregate_damage`) and 
 The tax schedule is the equal-utility-loss formula with a progressivity-adjusted exponent:
 
 ```
-η_eff = 1 + (f / (1 − f)) · (η − 1)
+η_eff = 1 + (tax_equity / (1 − tax_equity)) · (η − 1)
 ```
 
-where `f = tax_equity_knob ∈ [0, 0.99]` and `η` is the CRRA parameter.
+where `tax_equity ∈ [0, 0.99]` and `η` is the CRRA parameter.
 
-| `f`   | `η_eff`   | Resulting schedule                          | Behavior                              |
-|:-----:|:---------:|:--------------------------------------------|:--------------------------------------|
-| 0     | 1         | `c = y · exp(−K)`                           | Flat fractional rate (DICE-like)      |
-| 0.5   | η         | Equal-utility-loss formula                  | Same utility loss for all earners     |
-| → 1   | → ∞       | Sharp threshold on income                   | Tax concentrated on highest incomes   |
+| `tax_equity` | `η_eff`   | Resulting schedule                          | Behavior                              |
+|:------------:|:---------:|:--------------------------------------------|:--------------------------------------|
+| 0            | 1         | `c = y · exp(−K)`                           | Flat fractional rate (DICE-like)      |
+| 0.5          | η         | Equal-utility-loss formula                  | Same utility loss for all earners     |
+| → 1          | → ∞       | Sharp threshold on income                   | Tax concentrated on highest incomes   |
 
-At `η = 1`, `η_eff = 1` for any `f` and the knob is degenerate — the tax is always a flat fractional rate.
+At `η = 1`, `η_eff = 1` for any `tax_equity` and the knob is degenerate — the tax is always a flat fractional rate.
 
 **Tax schedule** (closed form):
 
@@ -346,7 +346,7 @@ At `η = 1`, `η_eff = 1` for any `f` and the knob is degenerate — the tax is 
 
 ```json
 "scalar_parameters": {
-    "tax_equity_knob": 0.5,
+    "tax_equity": 0.5,
     "eta": 2.0,
     "income_dependent_aggregate_damage": false
 }

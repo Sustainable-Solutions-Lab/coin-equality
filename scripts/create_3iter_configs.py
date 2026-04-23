@@ -12,7 +12,7 @@ import json
 import glob
 from pathlib import Path
 
-# Find all matching config files (config_010, 16 points, fract_gdp=1, 50k evals, not BOBYQA)
+# Find all matching config files (config_010, 16 points, 50k evals, not BOBYQA)
 pattern = 'json/*_010_*_16_1_50k.json'
 files = glob.glob(pattern)
 

@@ -34,14 +34,14 @@ def extract_config_info(directory_name):
     Extract flag pattern, max_evaluations, and algorithm from directory name.
 
     Handles multiple directory name formats:
-    - config_NNN_{flags}_{n_points}_{fract_gdp}_{max_eval}_{opt}_[BOBYQA_]TIMESTAMP
-    - config_NNN_{flags}_{fract_gdp}_{max_eval}_list[N]_TIMESTAMP
+    - config_NNN_{flags}_{n_points}_{value}_{max_eval}_{opt}_[BOBYQA_]TIMESTAMP
+    - config_NNN_{flags}_{value}_{max_eval}_list[N]_TIMESTAMP
 
     Returns: (flag_pattern, max_eval, algorithm) or (None, None, None) if cannot parse
     """
-    # Pattern 1: config_NNN_{flags}_{n_points}_{fract_gdp}_{max_eval}_{opt}_[BOBYQA_]TIMESTAMP
+    # Pattern 1: config_NNN_{flags}_{n_points}_{value}_{max_eval}_{opt}_[BOBYQA_]TIMESTAMP
     pattern_el = r'config_\d+_([tf]-[tf]-[tf]-[tf]-[tf])_\d+_([\d.]+)_(\d+k?).*_el_'
-    # Pattern 2: config_NNN_{flags}_{fract_gdp}_{max_eval}_list[N]_TIMESTAMP (no n_points)
+    # Pattern 2: config_NNN_{flags}_{value}_{max_eval}_list[N]_TIMESTAMP (no n_points)
     pattern_list = r'config_\d+_([tf]-[tf]-[tf]-[tf]-[tf])_([\d.]+)_(\d+k?)_list'
 
     match = re.search(pattern_el, directory_name)

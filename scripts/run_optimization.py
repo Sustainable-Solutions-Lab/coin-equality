@@ -563,12 +563,6 @@ def main():
     )
     n_final_control_points = len(opt_results['control_points'])
 
-    if opt_results.get('status') == 'degenerate':
-        print(f"\n*** DEGENERATE CASE DETECTED ***")
-        print(f"No income available for redistribution or abatement (fract_gdp = 0)")
-        print(f"Control values have no effect on outcome.")
-        print(f"Returning initial guess values.\n")
-
     t_base = config.scalar_params.t_base
     print_optimization_results(opt_results, n_final_control_points, t_base)
 

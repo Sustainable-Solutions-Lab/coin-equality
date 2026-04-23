@@ -333,28 +333,49 @@ def _get_omega_at_F(
 
 def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
     """
-    Compute post-tax income c(F) for equal-utility-loss taxation.
+    Compute post-tax income c(F) from the equal-utility-loss closed form.
 
-    With CRRA utility U(c) = c^(1-η)/(1-η) for η≠1, or U(c) = ln(c) for η=1:
-    Equal utility loss means U(y) - U(c) = K for all incomes.
-
-    Solving for c:
-        c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))   for η ≠ 1
-        c(F) = y(F) * exp(-K)                     for η = 1
+    Given a CRRA-like pseudo-utility U*(c) = c^(1-eta)/(1-eta) (or ln c at eta=1),
+    equal pseudo-utility loss U*(y) - U*(c) = K yields:
+        c(F) = [y(F)^(1-eta) - (1-eta) K]^(1/(1-eta))   for eta != 1
+        c(F) = y(F) * exp(-K)                           for eta = 1
 
     Parameters
     ----------
     y_F : float or ndarray
-        Pre-tax income(s)
+        Pre-tax income(s).
     K_utility_loss : float
-        Constant utility loss across all income levels
+        Common pseudo-utility loss parameter (solved upstream by find_K_equal_utility).
     eta : float
-        Coefficient of relative risk aversion
+        Exponent of the pseudo-utility. In the continuous-knob policy this is the
+        effective exponent eta_eff = 1 + tax_equity/(1-tax_equity)*(eta_CRRA - 1),
+        not necessarily the real CRRA parameter.
 
     Returns
     -------
     float or ndarray
-        Post-tax income(s)
+        Post-tax income(s).
+
+    Properties
+    ----------
+    1. Equal real utility loss at eta_eff = eta_CRRA (i.e. tax_equity = 0.5):
+       U(y) - U(c) = K for every y, where U is the real CRRA utility. This is the
+       defining property of the old 'u-uniform' policy and is preserved at the
+       midpoint of the continuous knob. Away from that corner the pseudo-utility
+       loss is still constant across y, but it is not the real-CRRA utility loss.
+
+    2. Monotonicity: dc/dy = (c/y)^eta > 0 for every c > 0, so post-tax income
+       is a strictly increasing function of pre-tax income. A richer person
+       never ends up with less post-tax income than a poorer one.
+
+    3. Boundedness: for eta >= 1, inner > 0 always, giving 0 < c <= y. For
+       eta < 1 the inner expression can go negative at large K; the
+       np.maximum(inner, 0.0) clip then floors c at 0 (100% tax cap, never
+       below zero).
+
+    4. No tax rate is materialized. If a caller wants the effective schedule,
+       derive average rate = 1 - c/y and marginal rate = 1 - (c/y)^eta from
+       the returned c_F and the input y_F.
     """
     y_F = np.asarray(y_F)
     scalar_input = np.ndim(y_F) == 0
@@ -522,6 +543,29 @@ def find_K_equal_utility(
     # K = K_norm * y_ref^(1-eta).
     K_norm = np.exp(sol.root)
     K = K_norm * y_damaged_mean ** (1.0 - eta)
+
+    # Post-solve invariant: c_F must be (weakly) monotone in F. y_F is monotone in F
+    # by Lorenz-curve construction, and dc/dy = (c/y)^eta > 0 wherever c > 0, so the
+    # schedule cannot invert the income order. Zero values are allowed: for eta < 1
+    # with large K, low-income people can legitimately be clipped to c = 0 (100% tax
+    # cap), and that's still non-decreasing in F. A violation here signals NaN, negative
+    # output, or genuine ordering inversion — all symptoms of a Brent miscarriage.
+    c_F_check = compute_post_tax_income_equal_utility(y_F, K, eta)
+    if not np.all(np.isfinite(c_F_check)):
+        bad = np.where(~np.isfinite(c_F_check))[0]
+        raise RuntimeError(
+            f"find_K_equal_utility: post-solve c_F contains non-finite values at indices "
+            f"{bad[:5].tolist()} (eta={eta:.4f}, K={K:.3g}, tax_amount={tax_amount:.3g})."
+        )
+    monotone_tol = y_damaged_mean * EPSILON * 1e3
+    diffs = np.diff(c_F_check)
+    if not np.all(diffs >= -monotone_tol):
+        bad = np.where(diffs < -monotone_tol)[0]
+        raise RuntimeError(
+            f"find_K_equal_utility: post-solve c_F not monotone in F at indices {bad[:5].tolist()}"
+            f" (min diff = {diffs.min():.3g}, tol = {monotone_tol:.3g}, eta={eta:.4f}, K={K:.3g})."
+        )
+
     return K
 
 

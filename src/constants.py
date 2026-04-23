@@ -12,7 +12,7 @@ NEG_BIGNUM = -1e30
 # Small epsilon for numerical comparisons and bounds
 # Used for:
 # - Comparing floats to unity (e.g., eta ≈ 1)
-# - Checking if values are effectively zero (e.g., fract_gdp ≈ 0)
+# - Checking if values are effectively zero
 # - Bounding variables away from exact 0 or 1 (e.g., Gini ∈ (ε, 1-ε))
 # - Ensuring values stay strictly positive (e.g., A2 ≥ ε)
 # - Root finding bracket offsets
@@ -75,10 +75,9 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
 # At Omega_base = 0.8, 80% of GDP is destroyed by climate damage
 OMEGA_BASE_MAX = 0.8
 
-# Maximum allowed value for tax_equity_knob (f) in the 'u-continuous' tax policy.
-# The mapping eta_eff = 1 + f/(1-f)*(eta-1) has a singularity at f = 1.
-# Capping at 0.99 approximates the "tax richest" limit without blowing up numerics;
-# users wanting the exact sharp-threshold behavior should use income_dependent_tax_policy='u-max'.
-TAX_EQUITY_KNOB_MAX = 0.99
+# Maximum allowed value for the tax_equity knob.
+# The mapping eta_eff = 1 + tax_equity/(1-tax_equity)*(eta-1) has a singularity at tax_equity = 1.
+# Capping at 0.99 approximates the "tax richest" limit without blowing up numerics.
+TAX_EQUITY_MAX = 0.99
 
 

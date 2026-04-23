@@ -225,11 +225,6 @@ def write_optimization_summary(opt_results, sensitivity_results, output_dir, run
         if 'termination_code' in opt_results and opt_results['termination_code'] is not None:
             writer.writerow(['Termination code', opt_results['termination_code']])
 
-        if opt_results['status'] == 'degenerate':
-            writer.writerow([])
-            writer.writerow(['WARNING: DEGENERATE CASE'])
-            writer.writerow(['Reason', 'No income available for redistribution or abatement (fract_gdp = 0)'])
-            writer.writerow(['Note', 'Control values have no effect on outcome. Returning initial guess.'])
         writer.writerow([])
 
         # Write final control points for f (times converted to calendar years)

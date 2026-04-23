@@ -44,7 +44,7 @@ def main():
     print(f'  delta = {config.scalar_params.delta}')
     print(f'  eta = {config.scalar_params.eta}')
     print(f'  rho = {config.scalar_params.rho}')
-    print(f'  fract_gdp = {config.scalar_params.fract_gdp}')
+    print(f'  tax_equity = {config.scalar_params.tax_equity}')
     print(f'\nTime-Dependent Parameters (at t=0):')
     print(f'  gini(0) = {config.time_functions["gini"](0.0):.4f}')
 

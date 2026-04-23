@@ -590,25 +590,6 @@ class UtilityOptimizer:
         if algorithm is None:
             algorithm = 'LN_SBPLX'
 
-        fract_gdp = self.base_config.scalar_params.fract_gdp
-        if abs(fract_gdp) < EPSILON:
-            self.degenerate_case = True
-            self.degenerate_reason = "fract_gdp = 0: No income available for redistribution or abatement. Control values have no effect on outcome."
-            control_times_array = np.array(control_times)
-            initial_guess_array = np.array(initial_guess)
-            obj = self.calculate_objective(initial_guess_array, control_times_array)
-            control_points = list(zip(control_times_array, initial_guess_array))
-            return {
-                'optimal_values': initial_guess_array,
-                'optimal_objective': obj,
-                'n_evaluations': self.n_evaluations,
-                'control_points': control_points,
-                'status': 'degenerate',
-                'termination_code': None,
-                'termination_name': 'DEGENERATE_CASE',
-                'algorithm': algorithm
-            }
-
         n_points = len(control_times)
         control_times = np.array(control_times)
 
@@ -733,33 +714,6 @@ class UtilityOptimizer:
 
         if algorithm is None:
             algorithm = 'LN_SBPLX'
-
-        fract_gdp = self.base_config.scalar_params.fract_gdp
-        if abs(fract_gdp) < EPSILON:
-            self.degenerate_case = True
-            self.degenerate_reason = "fract_gdp = 0: No income available for redistribution or abatement."
-            f_control_times_array = np.array(f_control_times)
-            f_initial_guess_array = np.array(f_initial_guess)
-            s_control_times_array = np.array(s_control_times)
-            s_initial_guess_array = np.array(s_initial_guess)
-            obj = self.calculate_objective(
-                f_initial_guess_array, f_control_times_array,
-                s_initial_guess_array, s_control_times_array
-            )
-            f_control_points = list(zip(f_control_times_array, f_initial_guess_array))
-            s_control_points = list(zip(s_control_times_array, s_initial_guess_array))
-            return {
-                'optimal_values': f_initial_guess_array,
-                's_optimal_values': s_initial_guess_array,
-                'optimal_objective': obj,
-                'n_evaluations': self.n_evaluations,
-                'control_points': f_control_points,
-                's_control_points': s_control_points,
-                'status': 'degenerate',
-                'termination_code': None,
-                'termination_name': 'DEGENERATE_CASE',
-                'algorithm': algorithm
-            }
 
         n_f_points = len(f_control_times)
         n_s_points = len(s_control_times)

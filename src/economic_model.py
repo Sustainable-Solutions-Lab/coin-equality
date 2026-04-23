@@ -175,7 +175,6 @@ def calculate_tendencies(state, params,
         - 'gini': Background Gini index (current, from time function)
         - 'Gini_fract': Fraction of Gini change as instantaneous step
         - 'Gini_restore': Rate of restoration to gini (yr^-1)
-        - 'fract_gdp': Fraction of GDP available for redistribution and abatement
         - 'f': log10 of marginal abatement cost ($/tCO2)
     omega_yi_Omega_base_ratio_prev : np.ndarray
         Per-quantile ratio of climate damage to base damage from previous timestep
@@ -243,7 +242,6 @@ def calculate_tendencies(state, params,
     theta1 = params['theta1']
     theta2 = params['theta2']
     mu_max = params['mu_max']
-    fract_gdp = params['fract_gdp']
     gini = params['gini']
     use_empirical_lorenz = params['use_empirical_lorenz']
     # f is now log10 of marginal abatement cost
@@ -270,7 +268,7 @@ def calculate_tendencies(state, params,
 
     # Policy switch (only remaining one)
     income_dependent_aggregate_damage = params['income_dependent_aggregate_damage']
-    tax_equity_knob = params['tax_equity_knob']
+    tax_equity = params['tax_equity']
 
 
 
@@ -338,6 +336,8 @@ def calculate_tendencies(state, params,
         omega_yi = np.zeros_like(xi)
         y_net_yi = np.zeros_like(xi)
         utility_yi = np.zeros_like(xi)
+        average_tax_rate_yi = np.zeros_like(xi)
+        marginal_tax_rate_yi = np.zeros_like(xi)
     else:
         # Economy exists - proceed with calculations
 
@@ -391,12 +391,13 @@ def calculate_tendencies(state, params,
 
         # ============================================================================
         # Tax policy: continuous-knob equal-utility-loss formula
-        # eta_effective = 1 + f/(1-f) * (eta - 1)
-        # At eta > 1:  f=0 -> flat rate, f=0.5 -> equal utility loss, f->1 -> tax richest.
+        # eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1)
+        # At eta > 1:  tax_equity=0 -> flat rate, tax_equity=0.5 -> equal utility loss,
+        #              tax_equity->1 -> tax richest.
         # At eta = 1 the knob is degenerate; the log-utility branch in find_K yields flat rate.
         # Monotonicity dc/dF > 0 is guaranteed by the closed form, so no iteration needed.
         # ============================================================================
-        tax_exponent = 1.0 + (tax_equity_knob / (1.0 - tax_equity_knob)) * (eta - 1.0)
+        tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
         K_equal_utility = 0.0
         if tax_amount > EPSILON:
             t_before_find_K = time.time()
@@ -432,6 +433,19 @@ def calculate_tendencies(state, params,
 
         y_pretax_yi = y_gross * dLdF_Fi * (1.0 - omega_yi_prev)
         y_net_yi = compute_post_tax_income_equal_utility(y_pretax_yi, K_equal_utility, tax_exponent)
+
+        # Diagnostic tax rates (not used by the simulation; surfaced for plotting / spot checks).
+        # Average rate = 1 - c/y; marginal rate = 1 - dc/dy = 1 - (c/y)^tax_exponent.
+        # At clipped individuals (c = 0) the marginal rate is defined as 1 (any extra
+        # income would also be fully taxed to zero); without this guard, 0 ** negative
+        # blows up when tax_exponent < 0 (which happens for eta < 1 with large tax_equity).
+        c_over_y = np.where(y_pretax_yi > EPSILON, y_net_yi / np.maximum(y_pretax_yi, EPSILON), 1.0)
+        average_tax_rate_yi = 1.0 - c_over_y
+        marginal_tax_rate_yi = np.where(
+            c_over_y > EPSILON,
+            1.0 - np.maximum(c_over_y, EPSILON) ** tax_exponent,
+            1.0,
+        )
 
         consumption_yi = y_net_yi * (1 - s)
         if eta == 1:
@@ -527,6 +541,10 @@ def calculate_tendencies(state, params,
             'y_net_yi': y_net_yi,
             'omega_yi': omega_yi,
             'utility_yi': utility_yi,
+            'average_tax_rate_yi': average_tax_rate_yi,
+            'marginal_tax_rate_yi': marginal_tax_rate_yi,
+            'max_average_tax_rate': float(np.max(average_tax_rate_yi)) if average_tax_rate_yi.size else 0.0,
+            'max_marginal_tax_rate': float(np.max(marginal_tax_rate_yi)) if marginal_tax_rate_yi.size else 0.0,
             's': s,
             'dK_dt': dK_dt,
             'mu_max': mu_max,
@@ -662,6 +680,10 @@ def integrate_model(config, store_detailed_output=True):
             'y_net_yi': np.zeros((n_steps, n_quad)),
             'omega_yi': np.zeros((n_steps, n_quad)),
             'utility_yi': np.zeros((n_steps, n_quad)),
+            'average_tax_rate_yi': np.zeros((n_steps, n_quad)),
+            'marginal_tax_rate_yi': np.zeros((n_steps, n_quad)),
+            'max_average_tax_rate': np.zeros(n_steps),
+            'max_marginal_tax_rate': np.zeros(n_steps),
             'emission_ratio': np.zeros(n_steps),
             'E_extra': np.zeros(n_steps),
             'consumption_extra': np.zeros(n_steps),
@@ -750,6 +772,10 @@ def integrate_model(config, store_detailed_output=True):
             results['y_net_yi'][i, :] = outputs['y_net_yi']
             results['omega_yi'][i, :] = outputs['omega_yi']
             results['utility_yi'][i, :] = outputs['utility_yi']
+            results['average_tax_rate_yi'][i, :] = outputs['average_tax_rate_yi']
+            results['marginal_tax_rate_yi'][i, :] = outputs['marginal_tax_rate_yi']
+            results['max_average_tax_rate'][i] = outputs['max_average_tax_rate']
+            results['max_marginal_tax_rate'][i] = outputs['max_marginal_tax_rate']
 
             # Store tendencies
             results['dK_dt'][i] = outputs['dK_dt']

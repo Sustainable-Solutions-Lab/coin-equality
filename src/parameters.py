@@ -307,8 +307,6 @@ class ScalarParameters:
         Coefficient of relative risk aversion (CRRA utility parameter)
     rho : float
         Pure rate of time preference (yr^-1)
-    fract_gdp : float
-        Fraction of GDP available for redistribution and abatement
     theta2 : float
         Abatement cost exponent
     mu_max : float
@@ -323,11 +321,12 @@ class ScalarParameters:
     income_dependent_aggregate_damage : bool
         If True, aggregate damage decreases as world gets richer
         If False, damage fraction depends only on temperature (DICE-like)
-    tax_equity_knob : float
-        Progressivity knob f in [0, TAX_EQUITY_KNOB_MAX] for the single tax policy.
-        eta_effective = 1 + f/(1-f) * (eta - 1). When eta > 1: f=0 gives a flat fractional
-        rate; f=0.5 gives equal utility loss; f -> 1 concentrates tax on the highest incomes.
-        At eta = 1 the knob is degenerate (any f yields a flat rate, the log-utility branch).
+    tax_equity : float
+        Progressivity knob in [0, TAX_EQUITY_MAX] for the single tax policy.
+        eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1). When eta > 1:
+        tax_equity=0 gives a flat fractional rate; tax_equity=0.5 gives equal utility
+        loss; tax_equity -> 1 concentrates tax on the highest incomes.
+        At eta = 1 the knob is degenerate (any value yields a flat rate, the log-utility branch).
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz formulation L(F) = F^p * (1 - (1-F)^q)
         If False, use Pareto-Lorenz formulation (default)
@@ -349,10 +348,9 @@ class ScalarParameters:
     k_climate: float
     eta: float
     rho: float
-    fract_gdp: float
     theta2: float
     K_initial: float
-    tax_equity_knob: float
+    tax_equity: float
     income_dependent_aggregate_damage: bool
     use_empirical_lorenz: bool = False
     t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
@@ -369,13 +367,13 @@ class ScalarParameters:
 
     def __post_init__(self):
         """Set mu_max default and validate tax-policy requirements."""
-        from src.constants import INVERSE_EPSILON, TAX_EQUITY_KNOB_MAX
+        from src.constants import INVERSE_EPSILON, TAX_EQUITY_MAX
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
 
-        if not (0.0 <= self.tax_equity_knob <= TAX_EQUITY_KNOB_MAX):
+        if not (0.0 <= self.tax_equity <= TAX_EQUITY_MAX):
             raise ValueError(
-                f"tax_equity_knob must be in [0.0, {TAX_EQUITY_KNOB_MAX}], got {self.tax_equity_knob}."
+                f"tax_equity must be in [0.0, {TAX_EQUITY_MAX}], got {self.tax_equity}."
             )
 
 
@@ -687,7 +685,7 @@ def evaluate_params_at_time(t, config):
         Dictionary containing all parameters evaluated at time t,
         with keys matching those expected by calculate_tendencies():
         'alpha', 'delta', 'psi1', 'psi2', 'y_damage_distribution_exponent', 'y_net_reference', 'k_climate',
-        'eta', 'rho', 'gini', 'Gini_fract', 'Gini_restore', 'fract_gdp', 'theta2', 'mu_max',
+        'eta', 'rho', 'gini', 'Gini_fract', 'Gini_restore', 'theta2', 'mu_max',
         'A', 'L', 'sigma', 'theta1', 'f', 's'
 
     Notes
@@ -717,11 +715,10 @@ def evaluate_params_at_time(t, config):
         'y_damage_distribution_exponent': sp.y_damage_distribution_exponent,
         'y_net_reference': sp.y_net_reference,
         'income_dependent_aggregate_damage': sp.income_dependent_aggregate_damage,
-        'tax_equity_knob': sp.tax_equity_knob,
+        'tax_equity': sp.tax_equity,
         'k_climate': sp.k_climate,
         'eta': sp.eta,
         'rho': sp.rho,
-        'fract_gdp': sp.fract_gdp,
         'theta2': sp.theta2,
         'mu_max': sp.mu_max,
 
