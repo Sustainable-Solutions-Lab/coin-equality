@@ -19,40 +19,34 @@ from matplotlib.ticker import FuncFormatter
 VARIABLE_METADATA = {
     't': {'description': 'Time', 'units': 'yr', 'group': 'time'},
     'A': {'description': 'Total Factor Productivity', 'units': '', 'group': 'economic'},
-    'E': {'description': 'Actual Emissions', 'units': 'tCO₂/yr', 'group': 'climate'},
+    'e': {'description': 'CO₂ Emissions', 'units': 'tCO₂/yr', 'group': 'climate'},
     'Ecum': {'description': 'Cumulative Emissions', 'units': 'tCO₂', 'group': 'climate'},
     'K': {'description': 'Capital Stock', 'units': '$', 'group': 'economic'},
     'L': {'description': 'Population', 'units': 'people', 'group': 'economic'},
-    'Lambda': {'description': 'Abatement Cost Fraction', 'units': '', 'group': 'abatement'},
+    'lambda_abate': {'description': 'Abatement Cost Fraction', 'units': '', 'group': 'abatement'},
     'Omega': {'description': 'Climate Damage Fraction', 'units': '', 'group': 'climate'},
+    'Omega_base': {'description': 'Base Climate Damage Fraction', 'units': '', 'group': 'climate'},
+    'Omega_calc': {'description': 'Lagged Climate Damage Fraction', 'units': '', 'group': 'climate'},
     'U': {'description': 'Mean Population Utility', 'units': '', 'group': 'inequality'},
-    'Y_damaged': {'description': 'GDP After Climate Damage', 'units': '$', 'group': 'economic'},
-    'Y_gross': {'description': 'Gross GDP', 'units': '$', 'group': 'economic'},
-    'Y_net': {'description': 'Net GDP', 'units': '$', 'group': 'economic'},
-    'AbateCost': {'description': 'Abatement Expenditure', 'units': '$', 'group': 'abatement'},
-    'dEcum_dt': {'description': 'Emissions Rate', 'units': 'tCO₂/yr', 'group': 'climate'},
+    'y_gross': {'description': 'Per-Capita Gross Income', 'units': '$/person', 'group': 'economic'},
+    'y_damaged': {'description': 'Per-Capita Income After Climate Damage', 'units': '$/person', 'group': 'economic'},
+    'y_net': {'description': 'Per-Capita Net Income', 'units': '$/person', 'group': 'economic'},
+    'abateCost_amount': {'description': 'Abatement Expenditure Per Capita', 'units': '$/person', 'group': 'abatement'},
     'dK_dt': {'description': 'Capital Growth Rate', 'units': '$/yr', 'group': 'economic'},
     'delta_T': {'description': 'Temperature Change', 'units': '°C', 'group': 'climate'},
-    'redistribution': {'description': 'Per-Capita Redistribution Amount', 'units': '$/person', 'group': 'inequality'},
-    'Redistribution_amount': {'description': 'Total Redistribution Amount', 'units': '$/yr', 'group': 'inequality'},
+    'max_average_tax_rate': {'description': 'Maximum Average Tax Rate', 'units': '', 'group': 'inequality'},
+    'max_marginal_tax_rate': {'description': 'Maximum Marginal Tax Rate', 'units': '', 'group': 'inequality'},
     'f': {'description': 'log₁₀(MAC)', 'units': 'log₁₀($/tCO₂)', 'group': 'policy'},
     'mu': {'description': 'Emissions Abatement Fraction', 'units': '', 'group': 'abatement'},
     'sigma': {'description': 'Carbon Intensity of GDP', 'units': 'tCO₂/$', 'group': 'climate'},
     'theta1': {'description': 'Marginal Abatement Cost at mu=1', 'units': '$/tCO₂', 'group': 'abatement'},
-    'marginal_abatement_cost': {'description': 'Marginal Abatement Cost', 'units': '$/tCO₂', 'group': 'abatement'},
-    'y_damaged': {'description': 'Per-Capita Income After Climate Damage', 'units': '$/person', 'group': 'economic'},
-    'y_net': {'description': 'Per-Capita Net Income', 'units': '$/person', 'group': 'economic'},
-    'Consumption': {'description': 'Total Consumption', 'units': '$/yr', 'group': 'economic'},
-    'Savings': {'description': 'Gross Investment', 'units': '$/yr', 'group': 'economic'},
     's': {'description': 'Savings Rate', 'units': '', 'group': 'policy'},
     'gini': {'description': 'Background Gini Index', 'units': '', 'group': 'inequality'},
     'Gini': {'description': 'Gini Index', 'units': '', 'group': 'inequality'},
-    'Fmin': {'description': 'Minimum Income Rank Boundary', 'units': '', 'group': 'inequality'},
-    'Fmax': {'description': 'Maximum Income Rank Boundary', 'units': '', 'group': 'inequality'},
-    'min_y_net': {'description': 'Net Income at Fmin', 'units': '$/person', 'group': 'inequality'},
-    'max_y_net': {'description': 'Net Income at Fmax', 'units': '$/person', 'group': 'inequality'},
     'tax_amount': {'description': 'Per-Capita Tax Amount', 'units': '$/person', 'group': 'policy'},
-    'r_consumption': {'description': 'Effective Discount Rate on Consumption', 'units': '', 'group': 'economic'},
+    'climate_damage': {'description': 'Per-Capita Climate Damage', 'units': '$/person', 'group': 'climate'},
+    'aggregate_utility': {'description': 'Aggregate Utility', 'units': '', 'group': 'inequality'},
+    'K_equal_utility': {'description': 'Capital for Equal Utility', 'units': '$', 'group': 'economic'},
     'emission_ratio': {'description': 'CO2e to CO2 Ratio', 'units': '', 'group': 'climate'},
 }
 
@@ -62,28 +56,24 @@ VARIABLE_GROUPS = {
     'dimensionless_ratios': [
         {'type': 'combined', 'title': 'Control Variables', 'variables': ['f', 's'], 'units': 'see legend'},
         {'type': 'single', 'variables': ['mu']},
-        {'type': 'combined', 'title': 'Economic Impact Fractions', 'variables': ['Omega', 'Lambda'], 'units': 'fraction'},
+        {'type': 'combined', 'title': 'Economic Impact Fractions', 'variables': ['Omega', 'lambda_abate'], 'units': 'fraction'},
         {'type': 'single', 'variables': ['Gini']},
-        {'type': 'combined', 'title': 'Income Rank Boundaries', 'variables': ['Fmin', 'Fmax'], 'units': 'rank'},
+        {'type': 'combined', 'title': 'Max Tax Rates', 'variables': ['max_average_tax_rate', 'max_marginal_tax_rate'], 'units': 'dimensionless'},
         {'type': 'single', 'variables': ['U']},
-        {'type': 'single', 'variables': ['r_consumption']}
     ],
     'dollar_variables': [
-        {'type': 'combined', 'title': 'GDP Components', 'variables': ['Y_gross', 'Y_damaged', 'Y_net'], 'units': '$'},
+        {'type': 'combined', 'title': 'Per-Capita Income', 'variables': ['y_gross', 'y_damaged', 'y_net'], 'units': '$/person'},
         {'type': 'single', 'variables': ['K']},
-        {'type': 'single', 'variables': ['Consumption']},
-        {'type': 'single', 'variables': ['Savings']},
-        {'type': 'single', 'variables': ['AbateCost']},
+        {'type': 'single', 'variables': ['abateCost_amount']},
         {'type': 'single', 'variables': ['dK_dt']},
-        {'type': 'single', 'variables': ['y_net']},
-        {'type': 'combined', 'title': 'Redistribution', 'variables': ['redistribution', 'Redistribution_amount'], 'units': '$'}
+        {'type': 'single', 'variables': ['tax_amount']},
+        {'type': 'single', 'variables': ['climate_damage']}
     ],
     'physical_variables': [
-        {'type': 'combined', 'title': 'Emissions', 'variables': ['E', 'dEcum_dt'], 'units': 'tCO₂/yr'},
+        {'type': 'single', 'variables': ['e']},
         {'type': 'single', 'variables': ['emission_ratio']},
         {'type': 'single', 'variables': ['Ecum']},
-        {'type': 'single', 'variables': ['delta_T']},
-        {'type': 'single', 'variables': ['marginal_abatement_cost']}
+        {'type': 'single', 'variables': ['delta_T']}
     ],
     'specified_functions': [
         {'type': 'single', 'variables': ['L']},
@@ -345,45 +335,37 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'gini',  # Background Gini index
         'Gini',  # Gini index
         'Ecum',  # Cumulative emissions
-        # Related to Ecum
-        'dEcum_dt',  # Rate of cumulative emissions change
         'delta_T',  # Global mean temperature change
-        # Production chain
-        'Y_gross',  # Gross production before climate damage
-        'Climate_damage',  # Total climate damage (Y_gross * Omega)
-        'Y_damaged',  # Output after climate damage before abatement
-        # Costs and net
-        'AbateCost',  # Total abatement expenditure
-        'Y_net',  # Output net of climate damage and abatement cost
-        # Investment and Consumption
-        'Savings',  # Gross investment
-        'Consumption',  # Total Consumption
-        # Per capita indices
-        'y_net',  # Effective per-capita income after abatement
-        'redistribution',  # Per-capita redistribution amount
-        'Redistribution_amount',  # Total redistribution amount
-        'U',  # Mean utility per capita
+        # Per capita variables
+        'y_gross',  # Per-capita gross income
+        'y_damaged',  # Per-capita income after climate damage
+        'y_net',  # Per-capita net income after abatement
+        'climate_damage',  # Per-capita climate damage
+        'tax_amount',  # Per-capita tax amount
         # Dimensionless variables
-        'Omega',  # Climate damage as fraction of gross output
-        'Lambda',  # Abatement cost as fraction of damaged output
-        # Remaining variables
         'mu',  # Abatement fraction
-        'E',  # CO2 emissions
+        'Omega',  # Climate damage as fraction of gross output
+        'Omega_base',  # Base damage from temperature
+        'Omega_calc',  # Climate damage from previous timestep (lagged)
+        'lambda_abate',  # Abatement cost as fraction of damaged output
+        'abateCost_amount',  # Abatement expenditure per capita
+        'U',  # Mean utility per capita
+        'aggregate_utility',  # Aggregate utility from integration
+        # Emissions
+        'e',  # CO2 emissions
         'emission_ratio',  # CO2e to CO2 ratio
         'E_extra',  # Extra emission pulse
         'consumption_extra',  # Extra consumption pulse
+        # Other
         'dK_dt',  # Net capital accumulation
-        'marginal_abatement_cost',  # Marginal abatement cost (social cost of carbon)
-        'welfare_adjusted_mac',  # Welfare-adjusted MAC (should match SCC at unconstrained optimum)
-        'mac_over_wmac',  # Ratio of raw MAC to welfare-adjusted MAC
-        'mu_dollar_numeraire',  # MU per $ for consumption-proportional numeraire
-        'mu_dollar_cost',  # MU per $ for abatement cost incidence
-        'r_consumption',  # Effective discount rate on consumption
+        'K_equal_utility',  # Capital for equal utility
+        'max_average_tax_rate',  # Maximum average tax rate across income bins
+        'max_marginal_tax_rate',  # Maximum marginal tax rate across income bins
     ]
 
     # Add any remaining variables not in the ordered list
     # Exclude 2D distribution arrays (those go in xlsx file) and quadrature info
-    exclude_from_csv = {'y_net_yi', 'omega_yi', 'utility_yi', 'xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges'}
+    exclude_from_csv = {'y_net_yi', 'omega_yi', 'utility_yi', 'xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges', 'average_tax_rate_yi', 'marginal_tax_rate_yi', 'params_list'}
     remaining_vars = sorted([k for k in results.keys()
                             if k not in ordered_columns and k not in exclude_from_csv])
     var_names = ordered_columns + remaining_vars
@@ -392,58 +374,37 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
     var_info = {
         't': ('Time', 'yr'),
         'A': ('Total factor productivity', '$'),
-        'mu': ('Abatement fraction', 'dimensionless'),
+        'L': ('Population', 'persons'),
         'theta1': ('Marginal abatement cost at mu=1', '$/tCO2'),
         'sigma': ('Carbon intensity of GDP', 'tCO2/$'),
-        'L': ('Population', 'persons'),
+        'f': ('Control: log10(marginal_abatement_cost)', 'log10($/tCO2)'),
+        's': ('Savings rate', 'dimensionless'),
+        'K': ('Capital stock', '$'),
+        'gini': ('Background Gini index', 'dimensionless'),
+        'Gini': ('Gini index', 'dimensionless'),
         'Ecum': ('Cumulative CO2 emissions', 'tCO2'),
         'delta_T': ('Global mean temperature change', '°C'),
+        'y_gross': ('Per-capita gross income', '$/person/yr'),
+        'y_damaged': ('Per-capita income after climate damage', '$/person/yr'),
+        'y_net': ('Per-capita net income after abatement', '$/person/yr'),
+        'climate_damage': ('Per-capita climate damage', '$/person/yr'),
+        'tax_amount': ('Per-capita tax amount', '$/person/yr'),
+        'mu': ('Abatement fraction', 'dimensionless'),
         'Omega': ('Climate damage as fraction of gross output', 'dimensionless'),
-        'Climate_damage': ('Total climate damage', '$/yr'),
-        'Y_damaged': ('Output after climate damage before abatement', '$/yr'),
-        'AbateCost': ('Total abatement expenditure', '$/yr'),
-        'Y_net': ('Output net of climate damage and abatement cost', '$/yr'),
-        'E': ('CO2 emissions', 'tCO2/yr'),
-        'Savings': ('Gross investment', '$/yr'),
-        'K': ('Capital stock', '$'),
-        'Consumption': ('Total Consumption', '$/yr'),
-        'dK_dt': ('Net capital accumulation', '$/yr'),
-        'y_net': ('Per-capita net income', '$/person/yr'),
-        'Gini': ('Gini index', 'dimensionless'),
-        'gini': ('Background Gini index', 'dimensionless'),
-        'redistribution': ('Per-capita redistribution amount', '$/person/yr'),
-        'Redistribution_amount': ('Total redistribution amount', '$/yr'),
-        'U': ('Mean utility per capita', 'dimensionless'),
-        's': ('Savings rate', 'dimensionless'),
-        'f': ('Control: log10(marginal_abatement_cost)', 'log10($/tCO2)'),
-        'marginal_abatement_cost': ('Marginal abatement cost (social cost of carbon)', '$/tCO2'),
-        'welfare_adjusted_mac': ('Welfare-adjusted MAC (should match SCC at unconstrained optimum)', '$/tCO2'),
-        'mac_over_wmac': ('Ratio of raw MAC to welfare-adjusted MAC', 'dimensionless'),
-        'mu_dollar_numeraire': ('MU per $ for consumption-proportional numeraire', '1/$'),
-        'mu_dollar_cost': ('MU per $ for abatement cost incidence', '1/$'),
-        'Y_gross': ('Gross production before climate damage', '$/yr'),
-        'y_net': ('Effective per-capita income after abatement', '$/person/yr'),
-        'Lambda': ('Abatement cost as fraction of damaged output', 'dimensionless'),
-        'redistribution': ('Per-capita redistributable income', '$/person/yr'),
-        'dEcum_dt': ('Rate of cumulative emissions change', 'tCO2/yr'),
-        'Fmin': ('Minimum income rank boundary', 'dimensionless'),
-        'Fmax': ('Maximum income rank boundary', 'dimensionless'),
-        'min_y_net': ('Net income at Fmin', '$/person/yr'),
-        'max_y_net': ('Net income at Fmax', '$/person/yr'),
-        'uniform_redistribution_amount': ('Uniform redistribution amount', '$/person/yr'),
-        'uniform_tax_rate': ('Uniform tax rate', 'dimensionless'),
-        'aggregate_utility': ('Aggregate utility from integration', 'dimensionless'),
         'Omega_base': ('Base damage from temperature before income adjustment', 'dimensionless'),
         'Omega_calc': ('Climate damage from previous timestep (lagged)', 'dimensionless'),
-        'y_damaged': ('Per-capita income after climate damage', '$/person/yr'),
-        'climate_damage': ('Per capita climate damage', '$/person/yr'),
-        'consumption': ('Per capita consumption', '$/person/yr'),
-        'savings': ('Per capita savings', '$/person/yr'),
-        'tax_amount': ('Per-capita tax amount (abatement + redistribution)', '$/person/yr'),
-        'r_consumption': ('Effective discount rate on consumption', 'dimensionless'),
+        'lambda_abate': ('Abatement cost as fraction of damaged output', 'dimensionless'),
+        'abateCost_amount': ('Abatement expenditure per capita', '$/person/yr'),
+        'U': ('Mean utility per capita', 'dimensionless'),
+        'aggregate_utility': ('Aggregate utility from integration', 'dimensionless'),
+        'e': ('CO2 emissions', 'tCO2/yr'),
         'emission_ratio': ('Ratio of CO2e to industrial CO2', 'dimensionless'),
         'E_extra': ('Extra emission pulse', 'tCO2/yr'),
         'consumption_extra': ('Extra consumption pulse', '$/person/yr'),
+        'dK_dt': ('Net capital accumulation', '$/yr'),
+        'K_equal_utility': ('Capital for equal utility', '$'),
+        'max_average_tax_rate': ('Maximum average tax rate across income bins', 'dimensionless'),
+        'max_marginal_tax_rate': ('Maximum marginal tax rate across income bins', 'dimensionless'),
     }
 
     # Create headers with format: "variable, description, (units)"
@@ -547,6 +508,18 @@ def write_distribution_xlsx(results, output_dir, run_name, filename='distributio
         utility_df = pd.DataFrame(results['utility_yi'], columns=bin_names)
         utility_df.insert(0, 't', t)
         utility_df.to_excel(writer, sheet_name='utility_yi', index=False)
+
+        # Sheet 5: average_tax_rate_yi (average tax rate at quadrature points)
+        if 'average_tax_rate_yi' in results:
+            avg_tax_df = pd.DataFrame(results['average_tax_rate_yi'], columns=bin_names)
+            avg_tax_df.insert(0, 't', t)
+            avg_tax_df.to_excel(writer, sheet_name='average_tax_rate_yi', index=False)
+
+        # Sheet 6: marginal_tax_rate_yi (marginal tax rate at quadrature points)
+        if 'marginal_tax_rate_yi' in results:
+            marg_tax_df = pd.DataFrame(results['marginal_tax_rate_yi'], columns=bin_names)
+            marg_tax_df.insert(0, 't', t)
+            marg_tax_df.to_excel(writer, sheet_name='marginal_tax_rate_yi', index=False)
 
     print(f"Distribution data saved to: {xlsx_path}")
     return xlsx_path
@@ -684,7 +657,7 @@ def _create_plot_page_new(t, results, chart_specs, group_name, run_name, pdf, pa
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
 
     # Variables that should use logarithmic y-axis
-    log_scale_vars = {'y_net', 'y_damaged', 'K', 'Consumption', 'Savings', 'Y_gross', 'Y_net', 'A', 'redistribution', 'Redistribution_amount'}
+    log_scale_vars = {'y_net', 'y_damaged', 'y_gross', 'K', 'A'}
 
     # Plot each chart
     for i, chart_spec in enumerate(chart_specs):
@@ -870,7 +843,7 @@ def save_results(results, run_name, plot_short_horizon=None, output_dir=None, co
     }
 
     # Exclude quadrature arrays and distribution data from plots (these are in XLSX only)
-    exclude_from_plots = {'y_net_yi', 'omega_yi', 'utility_yi', 'xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges'}
+    exclude_from_plots = {'y_net_yi', 'omega_yi', 'utility_yi', 'xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges', 'average_tax_rate_yi', 'marginal_tax_rate_yi', 'params_list'}
     results_for_plots = {k: v for k, v in results.items() if k not in exclude_from_plots}
 
     # Always create full PDF
