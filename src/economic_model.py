@@ -321,7 +321,7 @@ def calculate_tendencies(state, params,
         # Economy has collapsed - set all downstream variables to zero or appropriate values
         abateCost_amount = 0.0
         tax_amount = 0.0
-        K_equal_utility = 0.0
+        K_equal_utility_norm = 0.0
         aggregate_utility = NEG_BIGNUM
         Omega = 0.0
         lambda_abate = 0.0
@@ -398,10 +398,10 @@ def calculate_tendencies(state, params,
         # Monotonicity dc/dF > 0 is guaranteed by the closed form, so no iteration needed.
         # ============================================================================
         tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
-        K_equal_utility = 0.0
+        K_equal_utility_norm = 0.0
         if tax_amount > EPSILON:
             t_before_find_K = time.time()
-            K_equal_utility = find_K_equal_utility(
+            K_equal_utility_norm = find_K_equal_utility(
                 y_gross, gini, Omega_calc,
                 omega_yi_calc, omega_yi_calc, omega_yi_calc,  # Fmin=0, Fmax=1: only Region-2 array used
                 0.0, 1.0, xi_edges,
@@ -432,7 +432,11 @@ def calculate_tendencies(state, params,
         )
 
         y_pretax_yi = y_gross * dLdF_Fi * (1.0 - omega_yi_prev)
-        y_net_yi = compute_post_tax_income_equal_utility(y_pretax_yi, K_equal_utility, tax_exponent)
+        # Evaluate the closed form in normalized units to avoid y^(1-eta) underflow at high
+        # eta_eff. y_damaged_calc is the same y_damaged_mean find_K_equal_utility normalized by.
+        y_pretax_yi_norm = y_pretax_yi / y_damaged_calc
+        c_yi_norm = compute_post_tax_income_equal_utility(y_pretax_yi_norm, K_equal_utility_norm, tax_exponent)
+        y_net_yi = c_yi_norm * y_damaged_calc
 
         # Diagnostic tax rates (not used by the simulation; surfaced for plotting / spot checks).
         # Average rate = 1 - c/y; marginal rate = 1 - dc/dy = 1 - (c/y)^tax_exponent.
@@ -530,7 +534,7 @@ def calculate_tendencies(state, params,
             'lambda_abate': lambda_abate,
             'abateCost_amount': abateCost_amount,
             'tax_amount': tax_amount,
-            'K_equal_utility': K_equal_utility,
+            'K_equal_utility_norm': K_equal_utility_norm,
             'aggregate_utility': aggregate_utility,
             'Gini': gini,
             'gini': gini,
@@ -668,7 +672,7 @@ def integrate_model(config, store_detailed_output=True):
             'y_damaged': np.zeros(n_steps),
             'climate_damage': np.zeros(n_steps),
             'tax_amount': np.zeros(n_steps),
-            'K_equal_utility': np.zeros(n_steps),
+            'K_equal_utility_norm': np.zeros(n_steps),
             'aggregate_utility': np.zeros(n_steps),
             'mu': np.zeros(n_steps),
             'lambda_abate': np.zeros(n_steps),
@@ -754,7 +758,7 @@ def integrate_model(config, store_detailed_output=True):
 
             # Store tax variables
             results['tax_amount'][i] = outputs['tax_amount']
-            results['K_equal_utility'][i] = outputs['K_equal_utility']
+            results['K_equal_utility_norm'][i] = outputs['K_equal_utility_norm']
 
             # Store climate variables
             results['delta_T'][i] = outputs['delta_T']

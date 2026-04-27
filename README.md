@@ -323,7 +323,7 @@ The tax schedule is the equal-utility-loss formula with a progressivity-adjusted
 η_eff = 1 + (tax_equity / (1 − tax_equity)) · (η − 1)
 ```
 
-where `tax_equity ∈ [0, 0.99]` and `η` is the CRRA parameter.
+where `tax_equity ∈ [0, 1)` and `η` is the CRRA parameter.
 
 | `tax_equity` | `η_eff`   | Resulting schedule                          | Behavior                              |
 |:------------:|:---------:|:--------------------------------------------|:--------------------------------------|

@@ -408,19 +408,24 @@ def find_K_equal_utility(
     xi, wi,
 ):
     """
-    Find utility loss constant K for equal-utility-loss taxation.
+    Find the normalized utility-loss constant K_norm for equal-utility-loss taxation.
 
-    Returns K such that taxing everyone with equal utility loss yields tax_amount.
+    Returns K_norm in normalized income units. To recover post-tax income at raw
+    income y, the caller must:
+
+        c = compute_post_tax_income_equal_utility(y / y_damaged_mean, K_norm, eta) * y_damaged_mean
+
+    Solving in normalized units sidesteps floating-point underflow in y^(1-eta) at
+    high eta and dollar-scale incomes; K_norm stays well-conditioned even at
+    eta_eff in the hundreds.
 
     With CRRA utility U(c) = c^(1-η)/(1-η):
-    - Post-tax income: c(F) = [y(F)^(1-η) - (1-η)K]^(1/(1-η))
-    - Tax at rank F: τ(F) = y(F) - c(F)
-    - Revenue constraint: ∫₀¹ τ(F) dF = tax_amount
+    - Post-tax income: c_norm(F) = [y_norm(F)^(1-η) - (1-η)K_norm]^(1/(1-η))
+    - Revenue constraint (in raw units): ∫₀¹ (y(F) - c(F)) dF = tax_amount
 
     Special case η=1 (log utility):
-    - c(F) = y(F) * exp(-K)
-    - Tax rate: r = 1 - exp(-K) (constant for all F)
-    - This degenerates to uniform tax rate r = tax_amount / mean_income
+    - c(F) = y(F) * exp(-K_norm)  (the formula is scale-invariant, so K_norm = K)
+    - Degenerates to uniform tax rate r = tax_amount / mean_income.
 
     Parameters
     ----------
@@ -443,13 +448,13 @@ def find_K_equal_utility(
     xi_edges : ndarray
         Standard quadrature edges in xi space [-1, 1]
     eta : float
-        Coefficient of relative risk aversion
+        Coefficient of relative risk aversion (or eta_effective for the continuous tax knob)
     tax_amount : float
-        Target per-capita tax revenue
+        Target per-capita tax revenue (in raw income units)
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz; if False, use Pareto
     tol : float
-        Tolerance for root finding
+        Tolerance for root finding (in log-K_norm space)
     xi : ndarray
         Gauss-Legendre quadrature nodes on [-1, 1]
     wi : ndarray
@@ -458,7 +463,8 @@ def find_K_equal_utility(
     Returns
     -------
     float
-        Utility loss constant K such that equal-utility-loss taxation yields tax_amount
+        Normalized utility-loss constant K_norm. See module-level note above
+        on how to recover post-tax incomes from this value.
     """
     # If tax_amount is negligible, return K=0 (no tax)
     if tax_amount < EPSILON:
@@ -498,8 +504,8 @@ def find_K_equal_utility(
 
     # Normalize incomes so y_F_norm is O(1). Without this, y_F^(1-eta) underflows
     # to zero at large eta and realistic income scales (e.g. y~1e5, eta~10), which
-    # turns the tax-revenue function into a numerical step. After solving for K_norm
-    # we scale back: K = K_norm * y_damaged_mean^(1-eta).
+    # turns the tax-revenue function into a numerical step. We return K_norm directly;
+    # the caller is responsible for normalizing y by y_damaged_mean and rescaling c.
     y_F_norm = y_F / y_damaged_mean
     tax_amount_norm = tax_amount / y_damaged_mean
 
@@ -537,36 +543,34 @@ def find_K_equal_utility(
     if not sol.converged:
         raise RuntimeError("root_scalar did not converge for find_K_equal_utility")
 
-    # Convert K_norm back to unnormalized K for downstream use with raw y_F.
-    # Substituting y = y_ref * y' in c = [y^(1-eta) - (1-eta)K]^(1/(1-eta))
-    # yields c = y_ref * [y'^(1-eta) - (1-eta) * K_norm]^(1/(1-eta)) with
-    # K = K_norm * y_ref^(1-eta).
     K_norm = np.exp(sol.root)
-    K = K_norm * y_damaged_mean ** (1.0 - eta)
 
-    # Post-solve invariant: c_F must be (weakly) monotone in F. y_F is monotone in F
-    # by Lorenz-curve construction, and dc/dy = (c/y)^eta > 0 wherever c > 0, so the
-    # schedule cannot invert the income order. Zero values are allowed: for eta < 1
-    # with large K, low-income people can legitimately be clipped to c = 0 (100% tax
-    # cap), and that's still non-decreasing in F. A violation here signals NaN, negative
-    # output, or genuine ordering inversion — all symptoms of a Brent miscarriage.
-    c_F_check = compute_post_tax_income_equal_utility(y_F, K, eta)
-    if not np.all(np.isfinite(c_F_check)):
-        bad = np.where(~np.isfinite(c_F_check))[0]
+    # Post-solve invariant: c_F_norm must be finite and weakly monotone in F. y_F_norm
+    # is monotone in F by Lorenz construction, and dc/dy = (c/y)^eta > 0 wherever c > 0,
+    # so the schedule cannot invert the income order. Zero values are allowed: for
+    # eta < 1 with large K_norm, low-income people can legitimately be clipped to
+    # c_norm = 0 (100% tax cap), still non-decreasing in F. A violation here signals
+    # NaN, infinite output, or genuine ordering inversion — symptoms of a Brent
+    # miscarriage or out-of-range eta.
+    c_F_norm_check = compute_post_tax_income_equal_utility(y_F_norm, K_norm, eta)
+    if not np.all(np.isfinite(c_F_norm_check)):
+        bad = np.where(~np.isfinite(c_F_norm_check))[0]
         raise RuntimeError(
-            f"find_K_equal_utility: post-solve c_F contains non-finite values at indices "
-            f"{bad[:5].tolist()} (eta={eta:.4f}, K={K:.3g}, tax_amount={tax_amount:.3g})."
+            f"find_K_equal_utility: post-solve c_F_norm contains non-finite values at "
+            f"indices {bad[:5].tolist()} (eta={eta:.4f}, K_norm={K_norm:.3g}, "
+            f"tax_amount={tax_amount:.3g})."
         )
-    monotone_tol = y_damaged_mean * EPSILON * 1e3
-    diffs = np.diff(c_F_check)
+    diffs = np.diff(c_F_norm_check)
+    monotone_tol = EPSILON * 1e3  # in normalized units, c_norm is O(1)
     if not np.all(diffs >= -monotone_tol):
         bad = np.where(diffs < -monotone_tol)[0]
         raise RuntimeError(
-            f"find_K_equal_utility: post-solve c_F not monotone in F at indices {bad[:5].tolist()}"
-            f" (min diff = {diffs.min():.3g}, tol = {monotone_tol:.3g}, eta={eta:.4f}, K={K:.3g})."
+            f"find_K_equal_utility: post-solve c_F_norm not monotone in F at indices "
+            f"{bad[:5].tolist()} (min diff = {diffs.min():.3g}, tol = {monotone_tol:.3g}, "
+            f"eta={eta:.4f}, K_norm={K_norm:.3g})."
         )
 
-    return K
+    return K_norm
 
 
 #========================================================================================

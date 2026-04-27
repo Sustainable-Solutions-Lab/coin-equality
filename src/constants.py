@@ -75,9 +75,5 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
 # At Omega_base = 0.8, 80% of GDP is destroyed by climate damage
 OMEGA_BASE_MAX = 0.8
 
-# Maximum allowed value for the tax_equity knob.
-# The mapping eta_eff = 1 + tax_equity/(1-tax_equity)*(eta-1) has a singularity at tax_equity = 1.
-# Capping at 0.99 approximates the "tax richest" limit without blowing up numerics.
-TAX_EQUITY_MAX = 0.99
 
 

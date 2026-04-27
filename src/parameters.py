@@ -322,7 +322,7 @@ class ScalarParameters:
         If True, aggregate damage decreases as world gets richer
         If False, damage fraction depends only on temperature (DICE-like)
     tax_equity : float
-        Progressivity knob in [0, TAX_EQUITY_MAX] for the single tax policy.
+        Progressivity knob in [0, 1) for the single tax policy.
         eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1). When eta > 1:
         tax_equity=0 gives a flat fractional rate; tax_equity=0.5 gives equal utility
         loss; tax_equity -> 1 concentrates tax on the highest incomes.
@@ -366,14 +366,18 @@ class ScalarParameters:
     loose_epsilon: float = 1e-8
 
     def __post_init__(self):
-        """Set mu_max default and validate tax-policy requirements."""
-        from src.constants import INVERSE_EPSILON, TAX_EQUITY_MAX
+        """Set mu_max default and validate tax-policy domain."""
+        from src.constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
 
-        if not (0.0 <= self.tax_equity <= TAX_EQUITY_MAX):
+        # tax_equity = 1.0 is a singularity in the eta_eff mapping; values outside
+        # [0, 1) are not part of the policy domain. Anything inside that range is
+        # allowed; if the math underflows at extreme values, the solver / post-solve
+        # invariant raises a descriptive RuntimeError (CLAUDE.md fail-fast).
+        if not (0.0 <= self.tax_equity < 1.0):
             raise ValueError(
-                f"tax_equity must be in [0.0, {TAX_EQUITY_MAX}], got {self.tax_equity}."
+                f"tax_equity must be in [0.0, 1.0), got {self.tax_equity}."
             )
 
 
