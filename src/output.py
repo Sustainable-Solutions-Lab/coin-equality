@@ -46,7 +46,7 @@ VARIABLE_METADATA = {
     'tax_amount': {'description': 'Per-Capita Tax Amount', 'units': '$/person', 'group': 'policy'},
     'climate_damage': {'description': 'Per-Capita Climate Damage', 'units': '$/person', 'group': 'climate'},
     'aggregate_utility': {'description': 'Aggregate Utility', 'units': '', 'group': 'inequality'},
-    'K_equal_utility': {'description': 'Capital for Equal Utility', 'units': '$', 'group': 'economic'},
+    'K_equal_utility_norm': {'description': 'Normalized Utility-Loss Constant', 'units': '', 'group': 'economic'},
     'emission_ratio': {'description': 'CO2e to CO2 Ratio', 'units': '', 'group': 'climate'},
 }
 
@@ -358,7 +358,7 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'consumption_extra',  # Extra consumption pulse
         # Other
         'dK_dt',  # Net capital accumulation
-        'K_equal_utility',  # Capital for equal utility
+        'K_equal_utility_norm',  # Normalized utility-loss constant
         'max_average_tax_rate',  # Maximum average tax rate across income bins
         'max_marginal_tax_rate',  # Maximum marginal tax rate across income bins
     ]
@@ -402,7 +402,7 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         'E_extra': ('Extra emission pulse', 'tCO2/yr'),
         'consumption_extra': ('Extra consumption pulse', '$/person/yr'),
         'dK_dt': ('Net capital accumulation', '$/yr'),
-        'K_equal_utility': ('Capital for equal utility', '$'),
+        'K_equal_utility_norm': ('Normalized utility-loss constant', 'dimensionless'),
         'max_average_tax_rate': ('Maximum average tax rate across income bins', 'dimensionless'),
         'max_marginal_tax_rate': ('Maximum marginal tax rate across income bins', 'dimensionless'),
     }
