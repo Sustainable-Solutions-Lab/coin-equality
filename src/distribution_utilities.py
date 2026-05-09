@@ -385,7 +385,27 @@ def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
     # Handle η=1 (log utility) case
     if abs(eta - 1.0) < EPSILON:
         c_F = y_F * np.exp(-K_utility_loss)
+    elif eta > 1.0:
+        # Log-space formulation to avoid overflow in y^(1-η) at large η.
+        #
+        # Rewrite c = [y^(-α) + αK]^(-1/α) as c = y·(1 + αK·y^α)^(-1/α)
+        # where α = η-1 > 0. Compute αK·y^α in log space:
+        #   log(αKy^α) = log(α) + log(K) + α·log(y)
+        # Then log(c) = log(y) - (1/α)·log(1 + αKy^α), using logaddexp for stability.
+        # This avoids materializing y^(-α) which overflows for small y and large α
+        # (e.g. y=0.05, α=299 → y^(-299) ≈ 10^389 > float64 max).
+        alpha = eta - 1.0
+        if K_utility_loss <= 0.0:
+            c_F = y_F.copy()
+        else:
+            with np.errstate(divide='ignore'):
+                log_y = np.log(y_F)
+            log_aKya = np.log(alpha) + np.log(K_utility_loss) + alpha * log_y
+            log_factor = np.logaddexp(0.0, log_aKya)
+            log_c = log_y - log_factor / alpha
+            c_F = np.where(y_F > 0, np.exp(log_c), 0.0)
     else:
+        # η < 1: direct computation is numerically stable (1-η > 0, no overflow)
         # c = [y^(1-η) - (1-η)K]^(1/(1-η))
         inner = y_F ** (1.0 - eta) - (1.0 - eta) * K_utility_loss
         # Allow inner = 0 (taxed to zero income) when K exceeds max utility loss

@@ -480,12 +480,13 @@ class UtilityOptimizer:
         )
 
         # Use store_detailed_output=False during optimization for better performance
-        # ValueError can occur when equal-utility-loss taxation cannot raise enough revenue
-        # (e.g., during optimizer exploration of extreme low-abatement trajectories).
+        # ValueError can occur when equal-utility-loss taxation cannot raise enough revenue.
+        # RuntimeError can occur when root_scalar fails to converge for K_equal_utility
+        # at extreme tax progressivity (e.g., tax_equity=0.998 with high eta).
         # Return NEG_BIGNUM to signal infeasible control trajectory to the optimizer.
         try:
             results = integrate_model(config, store_detailed_output=False)
-        except ValueError:
+        except (ValueError, RuntimeError):
             return NEG_BIGNUM
 
         rho = self.base_config.scalar_params.rho
