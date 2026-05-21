@@ -328,9 +328,8 @@ class ScalarParameters:
         loss; tax_equity -> 1 concentrates tax on the highest incomes.
         At eta = 1 the knob is degenerate (any value yields a flat rate, the log-utility branch).
     use_empirical_lorenz : bool
-        If True, use Empirical Lorenz formulation L(F) = F^p * (1 - (1-F)^q)
+        If True, use Empirical Lorenz formulation L(F) = w0*F^p0 + w1*F^p1 + w2*F^p2 + w3*F^p3
         If False, use Pareto-Lorenz formulation (default)
-        Parameters (p, q) are derived from Gini coefficient using symmetric case G0=G1=g
     t_base : float
         Base year for time-dependent functions. Time functions receive (t - t_base)
         so they can be parameterized for relative time (0 = base year).

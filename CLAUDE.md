@@ -36,11 +36,8 @@ This project prioritizes elegant, fail-fast code that surfaces errors quickly ra
 ### Code Organization
 - All imports at the top of the file - no imports inside functions or scattered throughout the code
 
-### Plot Axis Scaling
-- **Zero-bound expansion**: For vertical y-axes, if both bounds have the same sign and `min(|lower_bound|, |upper_bound|) < 0.5 * max(|lower_bound|, |upper_bound|)`, then replace the bound with smaller absolute magnitude with zero. This improves plot readability by anchoring the axis at zero when one bound is significantly smaller than the other.
-  - Example: bounds [0.2, 1.0] → [0, 1.0] (since 0.2 < 0.5 * 1.0)
-  - Example: bounds [-1.0, -0.2] → [-1.0, 0] (since 0.2 < 0.5 * 1.0)
-  - Example: bounds [0.6, 1.0] → unchanged (since 0.6 ≮ 0.5 * 1.0)
+### Figure Style
+- Figure style guidelines and color palette are defined in `scripts/create_publication_figures.py`
 
 ### Protected Directories
 - Never modify files in `./barrage_nordhaus_2023/` - this directory contains reference materials that must remain unchanged
@@ -56,3 +53,9 @@ This project prioritizes elegant, fail-fast code that surfaces errors quickly ra
 - Let Python's natural error messages guide debugging rather than custom error handling
 - All function arguments must be explicitly provided - no default values (`=None`) or conditional logic
 - Clean fail-fast approach - if required arguments are not supplied, the code should fail immediately with a clear error
+
+## File Creation Rules
+- **Unix line endings only**: All files created must use `\n` (LF), never `\r\n` (CRLF). After creating any file with the Write tool, always verify with `xxd <file> | head -3` and fix with `tr -d '\r' < file > /tmp/fix.tmp && mv /tmp/fix.tmp file` if `0d0a` appears.
+- **Shell scripts for Sherlock**: Keep commands on a single line. Never use backslash line continuations — they break when pasted on Sherlock. If a command is too long for one line, write a helper Python script instead that generates the shell script on Sherlock (see `scripts/create_060_warmstart_slurm.py` for the pattern).
+- **Commands given to the user**: Must be short single-line commands that won't wrap in the terminal. Long commands get split when pasted and cause parse errors. If a task requires a complex command, wrap it in a script file instead.
+
