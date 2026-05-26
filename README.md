@@ -373,6 +373,16 @@ coin_equality/
 ├── json/                              # Configuration files
 │   ├── config_*_base.json             # Base configurations for sweep runs
 │   └── config_*_grid.csv              # Parameter grids for sweeps
+├── parameter_estimation/              # Offline curve-fitting utilities that
+│   │                                  # produce inputs to the simulation
+│   │                                  # (constants in src/constants.py and
+│   │                                  # time-function coefficients in json/).
+│   │                                  # See parameter_estimation/README.md.
+│   ├── empirical_distribution/        # Global Lorenz coordinates from per-
+│   │                                  # country decile data (PIP / World Bank)
+│   ├── lorenz_fit/                    # Polynomial fit producing the
+│   │                                  # EMPIRICAL_LORENZ_* constants
+│   └── global_gini/                   # Global Gini time series by SSP scenario
 ├── data/output/                       # Output directory (timestamped subdirs)
 └── barrage_nordhaus_2023/             # Reference materials (protected)
 ```
