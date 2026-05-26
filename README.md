@@ -382,7 +382,9 @@ coin_equality/
 │   │                                  # country decile data (PIP / World Bank)
 │   ├── lorenz_fit/                    # Polynomial fit producing the
 │   │                                  # EMPIRICAL_LORENZ_* constants
-│   └── global_gini/                   # Global Gini time series by SSP scenario
+│   ├── global_gini/                   # Global Gini time series by SSP scenario
+│   └── dice_timefunctions/            # Gompertz/exponential fits to B&N 2023
+│                                      # (A, L, sigma; later emission_ratio, Eland)
 ├── data/output/                       # Output directory (timestamped subdirs)
 └── barrage_nordhaus_2023/             # Reference materials (protected)
 ```

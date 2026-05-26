@@ -20,10 +20,15 @@ parameter_estimation/
 │   │   └── empirical_distribution_global.csv  # frozen snapshot of upstream output
 │   └── output/                            # generated at runtime
 │
-└── global_gini/                           # SSP-based global Gini time series
-    ├── global_gini.py
-    ├── data/                              # drop SSP input CSVs here (see below)
-    └── output/                            # generated at runtime
+├── global_gini/                           # SSP-based global Gini time series
+│   ├── global_gini.py
+│   ├── data/                              # drop SSP input CSVs here (see below)
+│   └── output/                            # generated at runtime
+│
+└── dice_timefunctions/                    # Gompertz / exponential fits to
+    ├── fit_dice_timefunctions.py          # Barrage & Nordhaus 2023 DICE-2023
+    └── output/                            # time series for A, L, sigma
+                                           # (emission_ratio, Eland to follow)
 ```
 
 Each subdirectory is one self-contained utility. Scripts use script-relative paths (`Path(__file__)`) so they can be run from any working directory.
@@ -35,6 +40,7 @@ Each subdirectory is one self-contained utility. Scripts use script-relative pat
 | `empirical_distribution/empirical_global_distribution.py` | `output/empirical_distribution_global.csv` (global Lorenz curve coordinates aggregated across all countries × deciles, plus a printed empirical global Gini) | Frozen as the input to `lorenz_fit/`. Not consumed directly by the simulation. |
 | `lorenz_fit/fit_polynomial_lorenz.py` | `output/polynomial_fit_results_<method>_<timestamp>.csv` (best-fit weights w_k and powers p_k for polynomials of various degrees, plus goodness-of-fit metrics) | The degree-4 convex-combination row becomes `EMPIRICAL_LORENZ_P0..P3` and `EMPIRICAL_LORENZ_W1..W3` in `src/constants.py`. |
 | `global_gini/global_gini.py` | `output/global_gini_table.csv` (global Gini by year × SSP) and `output/global_gini_trends.png` | The SSP2 trajectory is fit (separately, by hand or future script) to an exponential form; the resulting `exponential_scaling`, `growth_rate`, `additive_constant` populate the `gini` time-function block in `json/config_*.json`. |
+| `dice_timefunctions/fit_dice_timefunctions.py` | `output/dice_timefunctions_fits.json` (JSON-ready Gompertz blocks) + `output/dice_timefunctions_report.txt` (per-step B&N-vs-fit table with R², RMSE, max relative error per variable) | The three Gompertz blocks `initial_value` / `final_value` / `adjustment_coefficient` for `A`, `L`, `sigma` are pasted into the `time_functions` section of `json/config_*.json`. Same scaffolding will host the exponential fits for `emission_ratio` and `Eland` when those are added. |
 
 ## Data flow
 
