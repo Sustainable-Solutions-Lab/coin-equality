@@ -12,6 +12,12 @@ A stylized climate-economy model exploring how income inequality and progressive
    - [Objective Function](#objective-function)
    - [Core Components](#core-components)
    - [Key Insights](#key-insights)
+- [Parameter Provenance](#parameter-provenance)
+   - [Direct from DICE-2023](#direct-from-dice-2023)
+   - [Deliberate Modeling Choices](#deliberate-modeling-choices)
+   - [Continuous Fits to DICE Trajectories](#continuous-fits-to-dice-trajectories)
+   - [Calibrated Parameters](#calibrated-parameters)
+   - [External Data Sources](#external-data-sources)
 - [Configuration](#configuration)
    - [Configuration Files](#configuration-files)
    - [Policy Configuration](#policy-configuration)
@@ -253,11 +259,66 @@ This formulation is controlled by the `use_empirical_lorenz` boolean parameter i
 
 3. **Time preference dominates carbon pricing level**: The discount rate ρ has the largest effect on the optimal carbon price, while tax progressivity (`tax_equity`) and damage distribution (`y_damage_distribution_exponent`) determine how much inequality considerations shift the optimum relative to the flat-tax baseline.
 
+## Parameter Provenance
+
+This section documents where each model parameter comes from: exact sources, calibration procedures, and fit quality. Parameters fall into five categories.
+
+### Direct from DICE-2023
+
+These parameters are taken directly from DICE-2023 (Barrage & Nordhaus 2024) with no modification.
+
+| Parameter | Value | DICE-2023 variable | Status |
+|-----------|-------|-------------------|--------|
+| α (capital share) | 0.30 | `gama` | Exact match |
+| δ (depreciation rate) | 0.10 yr⁻¹ | `dk` | Exact match |
+| ψ₂ (damage coefficient) | 0.003467 °C⁻² | `a2base` | Exact match |
+| θ₂ (abatement exponent) | 2.6 | `expcost2` | Exact match |
+| K(2020) (initial capital) | $295 trillion | `k0` | Exact match |
+
+### Deliberate Modeling Choices
+
+These parameters differ from DICE-2023 for documented reasons.
+
+**η = 1.5** (elasticity of marginal utility of consumption): Central value close to DICE-2016's 1.45. We do not adopt DICE-2023's value of 0.95 because DICE-2023 separates risk aversion from intertemporal substitution via Epstein-Zin preferences and compensates with a risk-adjusted time preference; our model uses a single effective pure rate of time preference that implicitly incorporates uncertainty adjustments (see ρ below). Sensitivity analysis sweeps η from 1.0 to 2.0, encompassing both calibrations.
+
+**ρ = 0.025 yr⁻¹** (pure rate of time preference): Matches the DICE-2023 risk-adjusted effective rate, computed from the pure rate prstp = 0.001 with risk adjustment: rartp = exp(prstp + βclim · π) − 1 = exp(0.001 + 0.5 × 0.05) − 1 ≈ 0.0253. This is not the DICE-2023 pure rate (prstp = 0.001). Sensitivity analysis sweeps ρ from 0 to 0.05 yr⁻¹.
+
+### Continuous Fits to DICE Trajectories
+
+DICE-2023 uses 5-year discrete recursive equations. COIN uses continuous Gompertz or exponential functions fitted to the DICE trajectories, enabling flexible-timestep integration. The fits were verified against DICE-2023 outputs; the table below summarizes fit quality.
+
+**Unit conversions:** DICE uses capital K in trillions of $, population L in millions, and output Y in trillions of $. COIN uses K in $, L in persons, Y in $. The TFP conversion factor A is approximately 125.89 (= 10^2.1). Carbon intensity σ converts by 10⁻³ (kgCO₂/$ → tCO₂/$). Land emissions E_land convert by 10⁹ (GtCO₂ → tCO₂).
+
+| Function | Type | Config parameters | DICE source | Max dev (pre-2100) | Max dev (2200) | Notes |
+|----------|------|-------------------|-------------|-------------------|----------------|-------|
+| A(t) TFP | Gompertz | initial=739.6, final=4,906,816, adj=-0.0015 | Recursive with gA(t) | 3% | 6% | Systematic under-prediction; Gompertz has finite asymptote while DICE growth is unbounded |
+| L(t) Population | Gompertz | initial=7.752e9, final=10.825e9, adj=-0.03133 | Power-law convergence to popasym | 0.01% | 0.0001% | Essentially exact |
+| σ(t) Carbon intensity | Gompertz | initial=2.914e-4, final=4.468e-5, adj=-0.008164 | Recursive with floor on gsig | 0.004% | 3.4% | Excellent pre-2150; diverges when DICE floor activates |
+| E_land(t) Land emissions | Exponential | 4.5e9 · exp(−0.02107·(t−2020)) | 5.9 GtCO₂ · 0.9^(t−1) | 24% offset | 24% offset | Decay rate matches exactly; initial value differs (TBD) |
+| r_CO₂e(t) Emissions ratio | Exponential | 1.40 · exp(−0.001823·(t−2020)) | emissrat2020=1.40, emissrat2100=1.21 | 0.25% | 17% | Matches 2020, 2100 by construction; COIN continues decline post-2100 while DICE freezes |
+| θ₁(t) Backstop cost | Double exponential | 6035.6 · (0.906·e^(−0.224t) + 0.094·e^(−0.00112t)) | pbacktime, sigma, expcost2 | — | — | Fit to DICE optimal-run output (SCC, μ), not DICE parameters directly |
+
+### Calibrated Parameters
+
+These parameters are derived from DICE-2023 trajectories rather than taken directly.
+
+**k_climate = 5.687 × 10⁻¹³ °C/tCO₂** (transient climate response to cumulative emissions): Calibrated from the DICE-2023 optimal trajectory using temperature and cumulative emissions at 2020 and 2050: k = (T₂₀₅₀ − T₂₀₂₀) / (CumEmiss₂₀₅₀ − CumEmiss₂₀₂₀) = (1.941 − 1.247) / (966.1 − 633.5 GtC × 3.667) = 5.69 × 10⁻¹³ °C/tCO₂. This replaces DICE's full carbon cycle (FAIR) and two-box thermal model with a single linear TCRE mapping. The implied TCRE is 2.09 K per 1000 GtC, within the IPCC AR6 likely range of 1.0–2.3 K per 1000 GtC.
+
+**E_cum(2020) = 2.193 × 10¹² tCO₂** (initial cumulative emissions): Back-calculated as T(2020) / k_climate = 1.247 °C / 5.687 × 10⁻¹³ to reproduce the DICE-2023 initial temperature. This is 5.9% lower than the direct GtC-to-tCO₂ conversion of DICE's 633.5 GtC (= 2,322 GtCO₂), which is expected from the TCRE linearization: k is calibrated from the 2020–2050 slope, so using DICE's historical cumulative emissions directly would overshoot T(2020).
+
+### External Data Sources
+
+**Lorenz curve L_b(F)**: 4-term power series fit (R² = 0.99998) to World Bank income distribution data (pip.worldbank.org, December 2025). Base Gini G_b = 0.6813. The functional form is L_b(F) = w₀·F^p₀ + w₁·F^p₁ + w₂·F^p₂ + w₃·F^p₃ with full-precision coefficients in `src/constants.py` (see [Empirical Lorenz Formulation](#empirical-lorenz-formulation) above for the parameter table).
+
+**Gini trajectory G(t)**: Exponential fit to SSP2 projections (Rao et al. 2023, doi:10.1088/1748-9326/acbdb0). G(t) = 0.195·exp(−0.01058·(t−2020)) + 0.378, giving G(2020) = 0.573, G(2100) = 0.462, G(∞) = 0.378.
+
+**y_ref = $17,210.79** (reference income for damage distribution normalization): Used as normalization for income-dependent climate damage. Source: TBD — closest candidate is World Bank GDP per capita PPP for 2019 (~$17,200). Only affects runs with y_damage_distribution_exponent > 0.
+
 ## Configuration
 
 ### Configuration Files
 
-All model parameters are specified in JSON configuration files. See `json/config_058_base.json` for a current example.
+All model parameters are specified in JSON configuration files. See `json/config_061_base.json` for a current example.
 
 Key configuration sections:
 - `scalar_parameters` - Time-invariant constants (α, δ, η, ρ, etc.)
@@ -403,7 +464,7 @@ Nordhaus, W. D. (2017). "Revisiting the social cost of carbon." *Proceedings of 
 
 MIT License
 
-Copyright (c) 2025 Lamprini Papargyri, ..., and Ken Caldeira
+Copyright (c) 2026 Lamprini Papargyri, ..., and Ken Caldeira
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

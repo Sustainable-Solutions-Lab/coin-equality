@@ -121,6 +121,7 @@ def main():
     ax1.set_title('Pulse-size sensitivity', fontsize=13)
     ax1.axhline(y=0, color='gray', linewidth=0.8, linestyle=':')
     ax1.grid(True, alpha=0.3)
+    ax1.set_axisbelow(True)
 
     # Panel 2: Time-shift (SCC vs pulse year)
     for scenario in SCENARIOS:
@@ -143,6 +144,7 @@ def main():
     ax2.set_title('SCC time path', fontsize=13)
     ax2.legend(fontsize=7, loc='upper left', ncol=2)
     ax2.grid(True, alpha=0.3)
+    ax2.set_axisbelow(True)
 
     # Apply zero-bound expansion for y-axis on panel 2
     all_scc = np.concatenate([d['time_shift_scc'] for d in all_results.values()])
