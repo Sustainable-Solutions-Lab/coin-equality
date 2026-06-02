@@ -75,5 +75,7 @@ EMPIRICAL_LORENZ_BASE_GINI = 1.0 - 2.0 * (
 # At Omega_base = 0.8, 80% of GDP is destroyed by climate damage
 OMEGA_BASE_MAX = 0.8
 
-
-
+# Sentinel for "no progressive tax" in log-deltaU space
+# Used by find_log_deltaU_equal_utility and compute_post_tax_income_equal_utility
+# to signal that no taxation is applied (deltaU = 0, log(deltaU) = -inf)
+LOG_DELTAU_NO_TAX = float('-inf')

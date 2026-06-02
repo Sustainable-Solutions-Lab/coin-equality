@@ -335,7 +335,7 @@ class ScalarParameters:
         so they can be parameterized for relative time (0 = base year).
         Default: 2020.0
     loose_epsilon : float
-        Convergence tolerance for Brent's-method root solve in find_K_equal_utility.
+        Convergence tolerance for Brent's-method root solve in find_log_deltaU_equal_utility.
         Default: 1e-8
     """
     alpha: float
@@ -361,7 +361,7 @@ class ScalarParameters:
     # Extra consumption pulse parameters (for sensitivity analysis)
     year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
-    # Convergence tolerance for the tax-amount root solve in find_K_equal_utility
+    # Convergence tolerance for the tax-amount root solve in find_log_deltaU_equal_utility
     loose_epsilon: float = 1e-8
 
     def __post_init__(self):

@@ -15,6 +15,7 @@ from scipy.optimize import root_scalar, fsolve, newton
 from src.constants import (
     EPSILON,
     MAX_ITERATIONS,
+    LOG_DELTAU_NO_TAX,
     EMPIRICAL_LORENZ_P0,
     EMPIRICAL_LORENZ_P1,
     EMPIRICAL_LORENZ_P2,
@@ -331,21 +332,28 @@ def _get_omega_at_F(
 # Equal utility loss taxation functions
 #========================================================================================
 
-def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
+def compute_post_tax_income_equal_utility(y_F, log_deltaU, eta):
     """
     Compute post-tax income c(F) from the equal-utility-loss closed form.
 
     Given a CRRA-like pseudo-utility U*(c) = c^(1-eta)/(1-eta) (or ln c at eta=1),
-    equal pseudo-utility loss U*(y) - U*(c) = K yields:
-        c(F) = [y(F)^(1-eta) - (1-eta) K]^(1/(1-eta))   for eta != 1
-        c(F) = y(F) * exp(-K)                           for eta = 1
+    equal pseudo-utility loss U*(y) - U*(c) = deltaU yields:
+        c(F) = [y(F)^(1-eta) - (1-eta) deltaU]^(1/(1-eta))   for eta != 1
+        c(F) = y(F) * exp(-deltaU)                             for eta = 1
+
+    This function accepts log(deltaU) instead of deltaU to avoid float64 underflow
+    when the tax exponent is large (>= ~290). At tax_exponent=500, the true solution
+    is log_deltaU ≈ -1242; exp(-1242) underflows to 0 in float64, silently disabling
+    progressive taxation. By keeping deltaU in log space throughout the eta > 1 branch,
+    the computation remains numerically exact.
 
     Parameters
     ----------
     y_F : float or ndarray
         Pre-tax income(s).
-    K_utility_loss : float
-        Common pseudo-utility loss parameter (solved upstream by find_K_equal_utility).
+    log_deltaU : float
+        Log of the common pseudo-utility loss parameter. Solved upstream by
+        find_log_deltaU_equal_utility. Use LOG_DELTAU_NO_TAX (= -inf) for no tax.
     eta : float
         Exponent of the pseudo-utility. In the continuous-knob policy this is the
         effective exponent eta_eff = 1 + tax_equity/(1-tax_equity)*(eta_CRRA - 1),
@@ -359,19 +367,14 @@ def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
     Properties
     ----------
     1. Equal real utility loss at eta_eff = eta_CRRA (i.e. tax_equity = 0.5):
-       U(y) - U(c) = K for every y, where U is the real CRRA utility. This is the
-       defining property of the old 'u-uniform' policy and is preserved at the
-       midpoint of the continuous knob. Away from that corner the pseudo-utility
-       loss is still constant across y, but it is not the real-CRRA utility loss.
+       U(y) - U(c) = deltaU for every y, where U is the real CRRA utility.
 
     2. Monotonicity: dc/dy = (c/y)^eta > 0 for every c > 0, so post-tax income
-       is a strictly increasing function of pre-tax income. A richer person
-       never ends up with less post-tax income than a poorer one.
+       is a strictly increasing function of pre-tax income.
 
     3. Boundedness: for eta >= 1, inner > 0 always, giving 0 < c <= y. For
-       eta < 1 the inner expression can go negative at large K; the
-       np.maximum(inner, 0.0) clip then floors c at 0 (100% tax cap, never
-       below zero).
+       eta < 1 the inner expression can go negative at large deltaU; the
+       np.maximum(inner, 0.0) clip then floors c at 0 (100% tax cap).
 
     4. No tax rate is materialized. If a caller wants the effective schedule,
        derive average rate = 1 - c/y and marginal rate = 1 - (c/y)^eta from
@@ -382,40 +385,44 @@ def compute_post_tax_income_equal_utility(y_F, K_utility_loss, eta):
     if scalar_input:
         y_F = y_F.reshape(1)
 
-    # Handle η=1 (log utility) case
+    # No-tax sentinel: log_deltaU = -inf means deltaU = 0
+    if log_deltaU == LOG_DELTAU_NO_TAX:
+        c_F = y_F.copy()
+        return float(c_F[0]) if scalar_input else c_F
+
+    # Handle η=1 (log utility) case: c = y * exp(-deltaU) = y * exp(-exp(log_deltaU))
     if abs(eta - 1.0) < EPSILON:
-        c_F = y_F * np.exp(-K_utility_loss)
+        c_F = y_F * np.exp(-np.exp(log_deltaU))
     elif eta > 1.0:
         # Log-space formulation to avoid overflow in y^(1-η) at large η.
         #
-        # Rewrite c = [y^(-α) + αK]^(-1/α) as c = y·(1 + αK·y^α)^(-1/α)
-        # where α = η-1 > 0. Compute αK·y^α in log space:
-        #   log(αKy^α) = log(α) + log(K) + α·log(y)
-        # Then log(c) = log(y) - (1/α)·log(1 + αKy^α), using logaddexp for stability.
-        # This avoids materializing y^(-α) which overflows for small y and large α
-        # (e.g. y=0.05, α=299 → y^(-299) ≈ 10^389 > float64 max).
+        # Rewrite c = [y^(-α) + α·deltaU]^(-1/α) as c = y·(1 + α·deltaU·y^α)^(-1/α)
+        # where α = η-1 > 0. Compute α·deltaU·y^α in log space:
+        #   log(α·deltaU·y^α) = log(α) + log_deltaU + α·log(y)
+        # Then log(c) = log(y) - (1/α)·log(1 + α·deltaU·y^α), using logaddexp.
+        # THE KEY FIX: we use log_deltaU directly instead of log(exp(logK)),
+        # which avoids the underflow that occurred when logK < -708.
         alpha = eta - 1.0
-        if K_utility_loss <= 0.0:
-            c_F = y_F.copy()
-        else:
-            with np.errstate(divide='ignore'):
-                log_y = np.log(y_F)
-            log_aKya = np.log(alpha) + np.log(K_utility_loss) + alpha * log_y
-            log_factor = np.logaddexp(0.0, log_aKya)
-            log_c = log_y - log_factor / alpha
-            c_F = np.where(y_F > 0, np.exp(log_c), 0.0)
+        with np.errstate(divide='ignore'):
+            log_y = np.log(y_F)
+        log_adUya = np.log(alpha) + log_deltaU + alpha * log_y
+        log_factor = np.logaddexp(0.0, log_adUya)
+        log_c = log_y - log_factor / alpha
+        c_F = np.where(y_F > 0, np.exp(log_c), 0.0)
     else:
         # η < 1: direct computation is numerically stable (1-η > 0, no overflow)
-        # c = [y^(1-η) - (1-η)K]^(1/(1-η))
-        inner = y_F ** (1.0 - eta) - (1.0 - eta) * K_utility_loss
-        # Allow inner = 0 (taxed to zero income) when K exceeds max utility loss
+        # c = [y^(1-η) - (1-η)·deltaU]^(1/(1-η))
+        # Safe to materialize deltaU here: small tax_exponent → moderate deltaU
+        deltaU = np.exp(log_deltaU)
+        inner = y_F ** (1.0 - eta) - (1.0 - eta) * deltaU
+        # Allow inner = 0 (taxed to zero income) when deltaU exceeds max utility loss
         inner = np.maximum(inner, 0.0)
         c_F = inner ** (1.0 / (1.0 - eta))
 
     return float(c_F[0]) if scalar_input else c_F
 
 
-def find_K_equal_utility(
+def find_log_deltaU_equal_utility(
     y_gross,
     gini,
     Omega_calc,
@@ -428,23 +435,23 @@ def find_K_equal_utility(
     xi, wi,
 ):
     """
-    Find the normalized utility-loss constant K_norm for equal-utility-loss taxation.
+    Find log(deltaU_norm) for equal-utility-loss taxation.
 
-    Returns K_norm in normalized income units. To recover post-tax income at raw
-    income y, the caller must:
+    Returns log(deltaU_norm) in normalized income units. To recover post-tax income
+    at raw income y, the caller must:
 
-        c = compute_post_tax_income_equal_utility(y / y_damaged_mean, K_norm, eta) * y_damaged_mean
+        c = compute_post_tax_income_equal_utility(y / y_damaged_mean, log_deltaU_norm, eta) * y_damaged_mean
 
-    Solving in normalized units sidesteps floating-point underflow in y^(1-eta) at
-    high eta and dollar-scale incomes; K_norm stays well-conditioned even at
-    eta_eff in the hundreds.
+    Returns log(deltaU) instead of deltaU itself to avoid float64 underflow at high
+    tax exponents (>= ~290), where the true solution can be log_deltaU ≈ -1242.
+    Converting back via exp() would give 0, silently disabling progressive taxation.
 
     With CRRA utility U(c) = c^(1-η)/(1-η):
-    - Post-tax income: c_norm(F) = [y_norm(F)^(1-η) - (1-η)K_norm]^(1/(1-η))
+    - Post-tax income: c_norm(F) = [y_norm(F)^(1-η) - (1-η)·deltaU_norm]^(1/(1-η))
     - Revenue constraint (in raw units): ∫₀¹ (y(F) - c(F)) dF = tax_amount
 
     Special case η=1 (log utility):
-    - c(F) = y(F) * exp(-K_norm)  (the formula is scale-invariant, so K_norm = K)
+    - c(F) = y(F) * exp(-deltaU)  (scale-invariant)
     - Degenerates to uniform tax rate r = tax_amount / mean_income.
 
     Parameters
@@ -474,7 +481,7 @@ def find_K_equal_utility(
     use_empirical_lorenz : bool
         If True, use Empirical Lorenz; if False, use Pareto
     tol : float
-        Tolerance for root finding (in log-K_norm space)
+        Tolerance for root finding (in log-deltaU space)
     xi : ndarray
         Gauss-Legendre quadrature nodes on [-1, 1]
     wi : ndarray
@@ -483,27 +490,28 @@ def find_K_equal_utility(
     Returns
     -------
     float
-        Normalized utility-loss constant K_norm. See module-level note above
-        on how to recover post-tax incomes from this value.
+        log(deltaU_norm), the log of the normalized utility-loss constant.
+        Returns LOG_DELTAU_NO_TAX (= -inf) when no tax is needed.
     """
-    # If tax_amount is negligible, return K=0 (no tax)
+    # If tax_amount is negligible, return no-tax sentinel
     if tax_amount < EPSILON:
-        return 0.0
+        return LOG_DELTAU_NO_TAX
 
     # Mean damaged income (what we're taxing from)
     y_damaged_mean = y_gross * (1.0 - Omega_calc)
 
     # Special case η=1 (log utility): degenerates to uniform tax rate
-    # c = y * exp(-K), so tax rate r = 1 - exp(-K)
+    # c = y * exp(-deltaU), so tax rate r = 1 - exp(-deltaU)
     # Total tax = r * y_mean = tax_amount
     # => r = tax_amount / y_mean
-    # => K = -ln(1 - r) = -ln(1 - tax_amount / y_mean)
+    # => deltaU = -ln(1 - r)
+    # => log_deltaU = log(-ln(1 - r))
     if abs(eta - 1.0) < EPSILON:
         r = tax_amount / y_damaged_mean
         # Cap r to avoid log(0) or negative
         r = min(r, 1.0 - EPSILON)
-        K = -np.log(1.0 - r)
-        return K
+        deltaU = -np.log(1.0 - r)
+        return np.log(deltaU)
 
     # Map quadrature from [-1, 1] to [0, 1] in F space
     Fi = (xi + 1.0) / 2.0
@@ -522,31 +530,33 @@ def find_K_equal_utility(
     )
     y_F = y_gross * dLdF * (1.0 - omega_Fi)
 
-    # Normalize incomes so y_F_norm is O(1). Without this, y_F^(1-eta) underflows
-    # to zero at large eta and realistic income scales (e.g. y~1e5, eta~10), which
-    # turns the tax-revenue function into a numerical step. We return K_norm directly;
+    # Normalize incomes so y_F_norm is O(1). We return log_deltaU_norm directly;
     # the caller is responsible for normalizing y by y_damaged_mean and rescaling c.
     y_F_norm = y_F / y_damaged_mean
     tax_amount_norm = tax_amount / y_damaged_mean
 
-    def tax_revenue_minus_target_log(logK):
-        # Solve in log-K space so the tax-revenue curve is smooth in the steep regime
-        # that appears at high eta (the curve is near-stepwise in K itself).
-        K_norm = np.exp(logK)
-        c_F_norm = compute_post_tax_income_equal_utility(y_F_norm, K_norm, eta)
+    def tax_revenue_minus_target(log_dU):
+        # Solve in log-deltaU space: pass log_dU directly to the post-tax function.
+        # No exp() conversion — this is the key fix that avoids underflow.
+        c_F_norm = compute_post_tax_income_equal_utility(y_F_norm, log_dU, eta)
         return np.sum(Fwi * (y_F_norm - c_F_norm)) - tax_amount_norm
 
-    # Bracket in log-K space. Lower bound chosen so K_norm is numerically zero
-    # (no tax); upper bound so K_norm is large enough to tax all income away.
-    logK_lo = -700.0  # exp(-700) ≈ 1e-304, below double-precision underflow
-    logK_hi = np.log(1e10)
+    # Dynamic bracket in log-deltaU space.
+    # Lower bound: at high tax_exponent α, the tax formula involves y^α, so
+    # log_deltaU scales as -α·log(y_max). Use a dynamic lower bound that
+    # accounts for the actual exponent magnitude.
+    alpha = abs(eta - 1.0)
+    with np.errstate(divide='ignore'):
+        log_y_max = np.log(np.max(y_F_norm))
+    log_dU_lo = -abs(alpha * log_y_max) - 50.0
+    log_dU_hi = np.log(1e10)
 
-    f_lo = tax_revenue_minus_target_log(logK_lo)
+    f_lo = tax_revenue_minus_target(log_dU_lo)
     if f_lo >= 0:
-        # Target already met at zero tax — nothing to raise
-        return 0.0
+        # Target already met at negligible tax — no tax needed
+        return LOG_DELTAU_NO_TAX
 
-    f_hi = tax_revenue_minus_target_log(logK_hi)
+    f_hi = tax_revenue_minus_target(log_dU_hi)
     if f_hi < 0:
         raise ValueError(
             f"Cannot raise required tax_amount={tax_amount:.6g} with equal utility loss taxation. "
@@ -555,29 +565,24 @@ def find_K_equal_utility(
         )
 
     sol = root_scalar(
-        tax_revenue_minus_target_log,
-        bracket=[logK_lo, logK_hi],
+        tax_revenue_minus_target,
+        bracket=[log_dU_lo, log_dU_hi],
         method="brentq",
         xtol=tol,
     )
     if not sol.converged:
-        raise RuntimeError("root_scalar did not converge for find_K_equal_utility")
+        raise RuntimeError("root_scalar did not converge for find_log_deltaU_equal_utility")
 
-    K_norm = np.exp(sol.root)
+    # sol.root IS log_deltaU_norm — return it directly, no exp() conversion
+    log_deltaU_norm = sol.root
 
-    # Post-solve invariant: c_F_norm must be finite and weakly monotone in F. y_F_norm
-    # is monotone in F by Lorenz construction, and dc/dy = (c/y)^eta > 0 wherever c > 0,
-    # so the schedule cannot invert the income order. Zero values are allowed: for
-    # eta < 1 with large K_norm, low-income people can legitimately be clipped to
-    # c_norm = 0 (100% tax cap), still non-decreasing in F. A violation here signals
-    # NaN, infinite output, or genuine ordering inversion — symptoms of a Brent
-    # miscarriage or out-of-range eta.
-    c_F_norm_check = compute_post_tax_income_equal_utility(y_F_norm, K_norm, eta)
+    # Post-solve invariant: c_F_norm must be finite and weakly monotone in F.
+    c_F_norm_check = compute_post_tax_income_equal_utility(y_F_norm, log_deltaU_norm, eta)
     if not np.all(np.isfinite(c_F_norm_check)):
         bad = np.where(~np.isfinite(c_F_norm_check))[0]
         raise RuntimeError(
-            f"find_K_equal_utility: post-solve c_F_norm contains non-finite values at "
-            f"indices {bad[:5].tolist()} (eta={eta:.4f}, K_norm={K_norm:.3g}, "
+            f"find_log_deltaU_equal_utility: post-solve c_F_norm contains non-finite values at "
+            f"indices {bad[:5].tolist()} (eta={eta:.4f}, log_deltaU_norm={log_deltaU_norm:.3g}, "
             f"tax_amount={tax_amount:.3g})."
         )
     diffs = np.diff(c_F_norm_check)
@@ -585,12 +590,12 @@ def find_K_equal_utility(
     if not np.all(diffs >= -monotone_tol):
         bad = np.where(diffs < -monotone_tol)[0]
         raise RuntimeError(
-            f"find_K_equal_utility: post-solve c_F_norm not monotone in F at indices "
+            f"find_log_deltaU_equal_utility: post-solve c_F_norm not monotone in F at indices "
             f"{bad[:5].tolist()} (min diff = {diffs.min():.3g}, tol = {monotone_tol:.3g}, "
-            f"eta={eta:.4f}, K_norm={K_norm:.3g})."
+            f"eta={eta:.4f}, log_deltaU_norm={log_deltaU_norm:.3g})."
         )
 
-    return K_norm
+    return log_deltaU_norm
 
 
 #========================================================================================
