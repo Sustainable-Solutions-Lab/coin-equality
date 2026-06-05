@@ -112,7 +112,7 @@ _timing_stats = {
     'total_time': 0.0,
     'setup_time': 0.0,
     'policy_calc_time': 0.0,
-    'find_K_time': 0.0,
+    'find_deltaU_time': 0.0,
     'segment2_time': 0.0,
     'utility_time': 0.0,
     'damage_agg_time': 0.0,
@@ -132,7 +132,7 @@ def print_timing_stats():
     print(f"Total time:          {stats['total_time']:8.2f} s  (100.0%)")
     print(f"  Setup:             {stats['setup_time']:8.2f} s  ({100*stats['setup_time']/stats['total_time']:5.1f}%)")
     print(f"  Policy calc:       {stats['policy_calc_time']:8.2f} s  ({100*stats['policy_calc_time']/stats['total_time']:5.1f}%)")
-    print(f"    find_K:          {stats['find_K_time']:8.2f} s  ({100*stats['find_K_time']/stats['total_time']:5.1f}%)")
+    print(f"    find_deltaU:     {stats['find_deltaU_time']:8.2f} s  ({100*stats['find_deltaU_time']/stats['total_time']:5.1f}%)")
     print(f"  Segment 2:         {stats['segment2_time']:8.2f} s  ({100*stats['segment2_time']/stats['total_time']:5.1f}%)")
     print(f"  Utility calc:      {stats['utility_time']:8.2f} s  ({100*stats['utility_time']/stats['total_time']:5.1f}%)")
     print(f"  Damage agg:        {stats['damage_agg_time']:8.2f} s  ({100*stats['damage_agg_time']/stats['total_time']:5.1f}%)")
@@ -400,7 +400,7 @@ def calculate_tendencies(state, params,
         tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
         log_deltaU_norm = LOG_DELTAU_NO_TAX
         if tax_amount > EPSILON:
-            t_before_find_K = time.time()
+            t_before_find_deltaU = time.time()
             log_deltaU_norm = find_log_deltaU_equal_utility(
                 y_gross, gini, Omega_calc,
                 omega_yi_calc, omega_yi_calc, omega_yi_calc,  # Fmin=0, Fmax=1: only Region-2 array used
@@ -409,7 +409,7 @@ def calculate_tendencies(state, params,
                 tol=params['loose_epsilon'],
                 xi=xi, wi=wi,
             )
-            _timing_stats['find_K_time'] += time.time() - t_before_find_K
+            _timing_stats['find_deltaU_time'] += time.time() - t_before_find_deltaU
 
         _timing_stats['policy_calc_time'] += time.time() - t_setup
 
