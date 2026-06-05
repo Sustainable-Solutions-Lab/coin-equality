@@ -16,6 +16,11 @@ import json
 import numpy as np
 from dataclasses import dataclass
 
+from src.constants import (
+    IMPULSE_RESPONSE_A1, IMPULSE_RESPONSE_A2, IMPULSE_RESPONSE_A3,
+    IMPULSE_RESPONSE_TAU1, IMPULSE_RESPONSE_TAU2, IMPULSE_RESPONSE_TAU3,
+)
+
 
 # =============================================================================
 # Time-Dependent Function Factories
@@ -363,6 +368,21 @@ class ScalarParameters:
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
     # Convergence tolerance for the tax-amount root solve in find_log_deltaU_equal_utility
     loose_epsilon: float = 1e-8
+    # Impulse response temperature model (Caldeira & Myhrvold 2013)
+    # When True, replaces delta_T = k_climate * Ecum with a three-exponential
+    # convolution that captures delayed warming (~2 yr fast, ~36 yr medium, ~97 yr slow)
+    use_impulse_response: bool = False
+    impulse_response_a1: float = IMPULSE_RESPONSE_A1    # mK/GtC
+    impulse_response_a2: float = IMPULSE_RESPONSE_A2    # mK/GtC
+    impulse_response_a3: float = IMPULSE_RESPONSE_A3    # mK/GtC
+    impulse_response_tau1: float = IMPULSE_RESPONSE_TAU1  # years
+    impulse_response_tau2: float = IMPULSE_RESPONSE_TAU2  # years
+    impulse_response_tau3: float = IMPULSE_RESPONSE_TAU3  # years
+    # Initial values for heat-uptake state variables (encode pre-2020 emission history)
+    # Must be calibrated from historical emissions data; 0.0 = no pre-2020 memory (placeholder)
+    H1_initial: float = 0.0  # °C (converted units, not mK/GtC)
+    H2_initial: float = 0.0  # °C
+    H3_initial: float = 0.0  # °C
 
     def __post_init__(self):
         """Set mu_max default and validate tax-policy domain."""
@@ -748,6 +768,15 @@ def evaluate_params_at_time(t, config):
         params['Eland'] = 0.0  # No land emissions
 
     # Extra emission/consumption pulse parameters
+    # Impulse response parameters
+    params['use_impulse_response'] = sp.use_impulse_response
+    params['impulse_response_a1'] = sp.impulse_response_a1
+    params['impulse_response_a2'] = sp.impulse_response_a2
+    params['impulse_response_a3'] = sp.impulse_response_a3
+    params['impulse_response_tau1'] = sp.impulse_response_tau1
+    params['impulse_response_tau2'] = sp.impulse_response_tau2
+    params['impulse_response_tau3'] = sp.impulse_response_tau3
+
     params['year_extra_emission'] = sp.year_extra_emission
     params['amount_extra_emission'] = sp.amount_extra_emission
     params['year_extra_consumption'] = sp.year_extra_consumption

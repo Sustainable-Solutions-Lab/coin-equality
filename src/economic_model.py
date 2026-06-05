@@ -21,7 +21,7 @@ from src.distribution_utilities import (
     stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, OMEGA_BASE_MAX
+from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, OMEGA_BASE_MAX, MK_PER_GTC_TO_C_PER_TCO2
 
 
 def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
@@ -287,7 +287,21 @@ def calculate_tendencies(state, params,
     # Main calculations
 
     # Eq 2.2: Temperature change from cumulative emissions
-    delta_T = k_climate * Ecum
+    use_impulse_response = params.get('use_impulse_response', False)
+    if use_impulse_response:
+        # Three-exponential impulse response (Caldeira & Myhrvold 2013)
+        # ΔT = R_∞·Ecum + H1 + H2 + H3, where R_∞ = -(a1+a2+a3) converted to °C/tCO₂
+        conv = MK_PER_GTC_TO_C_PER_TCO2
+        a1_conv = params['impulse_response_a1'] * conv
+        a2_conv = params['impulse_response_a2'] * conv
+        a3_conv = params['impulse_response_a3'] * conv
+        R_inf = -(a1_conv + a2_conv + a3_conv)
+        H1 = state.get('H1', 0.0)
+        H2 = state.get('H2', 0.0)
+        H3 = state.get('H3', 0.0)
+        delta_T = R_inf * Ecum + H1 + H2 + H3
+    else:
+        delta_T = k_climate * Ecum
 
     # Base damage from temperature (capped just below 1.0 to avoid division by zero)
     # Be careful when used not to produce effective Omega values >= 1.0
@@ -558,12 +572,20 @@ def calculate_tendencies(state, params,
         })
 
     # Always return minimal variables needed for optimization
+    dEcum_dt = e * L + E_extra
     results.update({
         'U': U,
         'mu': mu,
         'dK_dt': dK_dt,
-        'dEcum_dt': e * L + E_extra,
+        'dEcum_dt': dEcum_dt,
     })
+
+    # Impulse response heat-uptake tendencies: dHi/dt = ai·E(t) - Hi/τi
+    if use_impulse_response:
+        conv = MK_PER_GTC_TO_C_PER_TCO2
+        results['dH1_dt'] = params['impulse_response_a1'] * conv * dEcum_dt - state.get('H1', 0.0) / params['impulse_response_tau1']
+        results['dH2_dt'] = params['impulse_response_a2'] * conv * dEcum_dt - state.get('H2', 0.0) / params['impulse_response_tau2']
+        results['dH3_dt'] = params['impulse_response_a3'] * conv * dEcum_dt - state.get('H3', 0.0) / params['impulse_response_tau3']
 
     # Always return climate damage ratio for use in next time step.
     # Store per-quantile ratio so next timestep can scale by its own Omega_base.
@@ -645,10 +667,15 @@ def integrate_model(config, store_detailed_output=True):
     Omega_Omega_base_ratio_prev = 1.0
 
     # take abatement cost and initial climate damage into account for initial capital
+    use_impulse_response = config.scalar_params.use_impulse_response
     state = {
         'K': config.scalar_params.K_initial,
         'Ecum': config.scalar_params.Ecum_initial,
     }
+    if use_impulse_response:
+        state['H1'] = config.scalar_params.H1_initial
+        state['H2'] = config.scalar_params.H2_initial
+        state['H3'] = config.scalar_params.H3_initial
 
     # Initialize storage for variables
     results = {}
@@ -692,6 +719,12 @@ def integrate_model(config, store_detailed_output=True):
             'E_extra': np.zeros(n_steps),
             'consumption_extra': np.zeros(n_steps),
         })
+        if use_impulse_response:
+            results.update({
+                'H1': np.zeros(n_steps),
+                'H2': np.zeros(n_steps),
+                'H3': np.zeros(n_steps),
+            })
 
     # Always store time, state variables, and objective function variables
     results.update({
@@ -788,11 +821,22 @@ def integrate_model(config, store_detailed_output=True):
             results['E_extra'][i] = outputs['E_extra']
             results['consumption_extra'][i] = outputs['consumption_extra']
 
+            if use_impulse_response:
+                results['H1'][i] = state['H1']
+                results['H2'][i] = state['H2']
+                results['H3'][i] = state['H3']
+
         # Euler step: update state for next iteration (skip on last step)
         if i < n_steps - 1:
             state['K'] = state['K'] + dt * outputs['dK_dt']
             # do not allow cumulative emissions to go negative, making it colder than the initial condition
             state['Ecum'] = max(0.0, state['Ecum'] + dt * outputs['dEcum_dt'])
+
+            # Euler step: impulse response heat-uptake state variables
+            if use_impulse_response:
+                state['H1'] = state['H1'] + dt * outputs['dH1_dt']
+                state['H2'] = state['H2'] + dt * outputs['dH2_dt']
+                state['H3'] = state['H3'] + dt * outputs['dH3_dt']
 
             # Update damage ratios for next time step (lagged damage approach)
             omega_yi_Omega_base_ratio_prev = outputs['omega_yi_Omega_base_ratio']
