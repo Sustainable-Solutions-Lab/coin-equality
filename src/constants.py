@@ -80,7 +80,7 @@ OMEGA_BASE_MAX = 0.8
 # to signal that no taxation is applied (deltaU = 0, log(deltaU) = -inf)
 LOG_DELTAU_NO_TAX = float('-inf')
 
-# Temperature impulse response parameters (Caldeira & Myhrvold 2013, Table 2, median)
+# Temperature impulse response parameters (Ricke & Caldeira 2014, median)
 # doi:10.1088/1748-9326/9/12/124002
 # Functional form: ΔT(t) = -(a1+a2+a3) + a1·exp(-t/τ1) + a2·exp(-t/τ2) + a3·exp(-t/τ3)
 # where t is years after a pulse emission and ΔT is in mK per GtC emitted.

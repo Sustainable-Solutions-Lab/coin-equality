@@ -306,8 +306,6 @@ class ScalarParameters:
         Reference income for climate damage power-law scaling ($/person)
         Income levels are normalized by this value in damage calculations
         Only used when income_dependent_damage_distribution=True
-    k_climate : float
-        Temperature sensitivity to cumulative emissions (°C tCO2^-1)
     eta : float
         Coefficient of relative risk aversion (CRRA utility parameter)
     rho : float
@@ -349,7 +347,6 @@ class ScalarParameters:
     psi2: float
     y_damage_distribution_exponent: float
     y_net_reference: float
-    k_climate: float
     eta: float
     rho: float
     theta2: float
@@ -368,10 +365,8 @@ class ScalarParameters:
     amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
     # Convergence tolerance for the tax-amount root solve in find_log_deltaU_equal_utility
     loose_epsilon: float = 1e-8
-    # Impulse response temperature model (Caldeira & Myhrvold 2013)
-    # When True, replaces delta_T = k_climate * Ecum with a three-exponential
-    # convolution that captures delayed warming (~2 yr fast, ~36 yr medium, ~97 yr slow)
-    use_impulse_response: bool = False
+    # Impulse response temperature model (Ricke & Caldeira 2014)
+    # Three-exponential convolution capturing delayed warming (~2 yr fast, ~36 yr medium, ~97 yr slow)
     impulse_response_a1: float = IMPULSE_RESPONSE_A1    # mK/GtC
     impulse_response_a2: float = IMPULSE_RESPONSE_A2    # mK/GtC
     impulse_response_a3: float = IMPULSE_RESPONSE_A3    # mK/GtC
@@ -379,10 +374,11 @@ class ScalarParameters:
     impulse_response_tau2: float = IMPULSE_RESPONSE_TAU2  # years
     impulse_response_tau3: float = IMPULSE_RESPONSE_TAU3  # years
     # Initial values for heat-uptake state variables (encode pre-2020 emission history)
-    # Must be calibrated from historical emissions data; 0.0 = no pre-2020 memory (placeholder)
-    H1_initial: float = 0.0  # °C (converted units, not mK/GtC)
-    H2_initial: float = 0.0  # °C
-    H3_initial: float = 0.0  # °C
+    # Computed by convolving an exponential emission history (633.5 GtC cumulative to 2020,
+    # from DICE-2023) with the impulse response g(t). See SI eq. for ΔT_hist(t).
+    H1_initial: float = -0.07022  # °C (fast mode, τ=2.241 yr)
+    H2_initial: float = 0.21036   # °C (medium mode, τ=35.750 yr)
+    H3_initial: float = -0.08308  # °C (slow mode, τ=97.180 yr)
 
     def __post_init__(self):
         """Set mu_max default and validate tax-policy domain."""
@@ -707,8 +703,8 @@ def evaluate_params_at_time(t, config):
     dict
         Dictionary containing all parameters evaluated at time t,
         with keys matching those expected by calculate_tendencies():
-        'alpha', 'delta', 'psi1', 'psi2', 'y_damage_distribution_exponent', 'y_net_reference', 'k_climate',
-        'eta', 'rho', 'gini', 'Gini_fract', 'Gini_restore', 'theta2', 'mu_max',
+        'alpha', 'delta', 'psi1', 'psi2', 'y_damage_distribution_exponent', 'y_net_reference',
+        'eta', 'rho', 'gini', 'theta2', 'mu_max', 'impulse_response_a1/a2/a3/tau1/tau2/tau3',
         'A', 'L', 'sigma', 'theta1', 'f', 's'
 
     Notes
@@ -739,7 +735,6 @@ def evaluate_params_at_time(t, config):
         'y_net_reference': sp.y_net_reference,
         'income_dependent_aggregate_damage': sp.income_dependent_aggregate_damage,
         'tax_equity': sp.tax_equity,
-        'k_climate': sp.k_climate,
         'eta': sp.eta,
         'rho': sp.rho,
         'theta2': sp.theta2,
@@ -767,9 +762,7 @@ def evaluate_params_at_time(t, config):
     else:
         params['Eland'] = 0.0  # No land emissions
 
-    # Extra emission/consumption pulse parameters
     # Impulse response parameters
-    params['use_impulse_response'] = sp.use_impulse_response
     params['impulse_response_a1'] = sp.impulse_response_a1
     params['impulse_response_a2'] = sp.impulse_response_a2
     params['impulse_response_a3'] = sp.impulse_response_a3

@@ -240,11 +240,51 @@ AbateCost(t) = (θ₁/θ₂) · E_pot(t) · μ^θ₂            (abatement expen
 
 #### 2. Climate Model
 
-**Temperature Change:**
+Temperature change is the sum of (1) the warming from pre-2020 emissions, ΔT_hist(t), and (2) a convolution of post-2020 emissions with the temperature impulse response g(t₀):
 ```
-ΔT(t) = k_climate · Ecum(t)
+ΔT(t) = ΔT_hist(t) + Σ E(t₀)·g(t-t₀)·Δt       (sum from t₀=2020 to t)
 ```
-Temperature is proportional to cumulative CO₂ emissions.
+
+The impulse response g(t₀) (°C/tCO₂, median from Ricke & Caldeira 2014, doi:10.1088/1748-9326/9/12/124002):
+```
+g(t₀) = (0.479 - 0.629·e^(-t₀/2.241) + 0.203·e^(-t₀/35.750) - 0.0521·e^(-t₀/97.180)) × 10⁻¹²
+```
+
+The convolution is decomposed into an ODE system for O(N) computation:
+```
+ΔT(t) = R_∞·Ecum + H1 + H2 + H3
+dHi/dt = ai·E(t) - Hi/τi           (i = 1,2,3)
+```
+where R_∞ = -(a1+a2+a3) is the equilibrium response and Hi are heat-uptake state variables that carry the memory of past emissions.
+
+Raw impulse response parameters (from Table 2, median case):
+| Parameter | Value | Units |
+|-----------|-------|-------|
+| a1 | -2.308 | mK/GtC |
+| a2 | 0.743 | mK/GtC |
+| a3 | -0.191 | mK/GtC |
+| τ1 | 2.241 | years |
+| τ2 | 35.750 | years |
+| τ3 | 97.180 | years |
+
+Unit conversion factor: 1 mK/GtC = 10⁻³ / 3.6667×10⁹ ≈ 2.727×10⁻¹³ °C/tCO₂
+
+**Historical temperature ΔT_hist(t):**
+
+The warming contribution from pre-2020 emissions decays over time as the ocean equilibrates:
+```
+ΔT_hist(t) = 1.1126 - 0.07022·e^((2020-t)/2.241) + 0.21036·e^((2020-t)/35.750) - 0.08308·e^((2020-t)/97.180)
+```
+This was derived by assuming cumulative emissions grew exponentially to the DICE-2023 value of 633.5 GtC (= 52.3320 GtCO₂eq/yr in 2020), and convolving this historical emissions trajectory with g(t₀).
+
+At t=2020: ΔT_hist(2020) = 1.1126 - 0.07022 + 0.21036 - 0.08308 = 1.1697 °C.
+
+The ODE initial conditions H1(2020), H2(2020), H3(2020) are read directly from the ΔT_hist formula:
+```
+H1_initial = -0.07022 °C    (fast mode, τ=2.241 yr — decays within ~5 years)
+H2_initial =  0.21036 °C    (medium mode, τ=35.750 yr — ocean mixed layer)
+H3_initial = -0.08308 °C    (slow mode, τ=97.180 yr — deep ocean)
+```
 
 **Potential Emissions:**
 ```
@@ -318,7 +358,7 @@ y(F) = y_mean · dL/dF(F)
 The model computes variables in this order at each timestep. All quantities within `calculate_tendencies` are per-capita unless noted.
 
 **Climate and Production:**
-1. **ΔT** = k_climate · Ecum (temperature from cumulative emissions)
+1. **ΔT** = R_∞·Ecum + H1 + H2 + H3 (impulse response temperature)
 2. **Ω_base** = ψ₂ · ΔT² (base climate damage fraction)
 3. **Reconstruct previous damage**: scale stored ratios by current Ω_base
 4. **y_gross** = A · (K/L)^α (per-capita gross income)
@@ -435,15 +475,17 @@ DICE-2023 uses 5-year discrete recursive equations. COIN uses continuous Gompert
 
 These parameters are derived from DICE-2023 trajectories rather than taken directly.
 
-**k_climate = 5.687 × 10⁻¹³ °C/tCO₂** (transient climate response to cumulative emissions): Calibrated from the DICE-2023 optimal trajectory using temperature and cumulative emissions at 2020 and 2050: k = (T₂₀₅₀ − T₂₀₂₀) / (CumEmiss₂₀₅₀ − CumEmiss₂₀₂₀) = (1.941 − 1.247) / (966.1 − 633.5 GtC × 3.667) = 5.69 × 10⁻¹³ °C/tCO₂. This replaces DICE's full carbon cycle (FAIR) and two-box thermal model with a single linear TCRE mapping. The implied TCRE is 2.09 K per 1000 GtC, within the IPCC AR6 likely range of 1.0–2.3 K per 1000 GtC.
+**E_cum(2020) = 2.323 × 10¹² tCO₂** (initial cumulative emissions): Equals 633.5 GtC × 3.6667 tCO₂/tC, adopting the DICE-2023 cumulative emissions value (Barrage & Nordhaus 2024).
 
-**E_cum(2020) = 2.193 × 10¹² tCO₂** (initial cumulative emissions): Back-calculated as T(2020) / k_climate = 1.247 °C / 5.687 × 10⁻¹³ to reproduce the DICE-2023 initial temperature. This is 5.9% lower than the direct GtC-to-tCO₂ conversion of DICE's 633.5 GtC (= 2,322 GtCO₂), which is expected from the TCRE linearization: k is calibrated from the 2020–2050 slope, so using DICE's historical cumulative emissions directly would overshoot T(2020).
+**Impulse response parameters**: From Ricke & Caldeira 2014 (doi:10.1088/1748-9326/9/12/124002), median case. The raw coefficients (a1=-2.308, a2=0.743, a3=-0.191 mK/GtC) are converted to °C/tCO₂ via the factor 10⁻³/3.6667×10⁹. The equilibrium TCRE is R_∞ = -(a1+a2+a3) × conversion = 4.79×10⁻¹³ °C/tCO₂.
+
+**H_initial values** (calibrated from pre-2020 historical emissions): Derived by assuming global cumulative emissions grew exponentially to the DICE-2023 value of 633.5 GtC (at 52.3320 GtCO₂eq/yr in 2020), convolving this trajectory with g(t₀), and reading off the exponential coefficients in ΔT_hist(2020). Values: H1=-0.07022°C, H2=0.21036°C, H3=-0.08308°C.
 
 ### External Data Sources
 
 **Lorenz curve L_b(F)**: 4-term power series fit (R² = 0.99998) to World Bank income distribution data (pip.worldbank.org, December 2025). Base Gini G_b = 0.6813. The functional form is L_b(F) = w₀·F^p₀ + w₁·F^p₁ + w₂·F^p₂ + w₃·F^p₃ with full-precision coefficients in `src/constants.py` (see [Empirical Lorenz Formulation](#empirical-lorenz-formulation) above for the parameter table).
 
-**Gini trajectory G(t)**: Exponential fit to SSP2 projections (Rao et al. 2023, doi:10.1088/1748-9326/acbdb0). G(t) = 0.195·exp(−0.01058·(t−2020)) + 0.378, giving G(2020) = 0.573, G(2100) = 0.462, G(∞) = 0.378.
+**Gini trajectory G(t)**: Least-squares exponential fit to SSP2 global Gini values (computed from country-level decile income share projections of Narayan et al. 2023, doi:10.1088/1748-9326/acbdb0). G(t) = 0.19517·exp(−0.01058·(t−2020)) + 0.37796, giving G(2020) = 0.573, G(2100) = 0.462, G(∞) = 0.378. Full-precision coefficients are in `json/config_template.json`; the manuscript equation uses rounded values (0.195, 0.378).
 
 **y_ref = $17,210.79** (reference income for damage distribution normalization): Used as normalization for income-dependent climate damage. Source: TBD — closest candidate is World Bank GDP per capita PPP for 2019 (~$17,200). Only affects runs with y_damage_distribution_exponent > 0.
 
@@ -478,10 +520,12 @@ Each JSON configuration file contains six sections:
 | Parameter | Description | Units | JSON Key |
 |-----------|-------------|-------|----------|
 | ψ₂ | Quadratic climate damage coefficient | °C⁻² | `psi2` |
-| k_climate | Temperature sensitivity to cumulative emissions | °C tCO₂⁻¹ | `k_climate` |
 | θ₂ | Abatement cost exponent | - | `theta2` |
 | μ_max | Maximum abatement fraction (values > 1 allow carbon removal) | - | `mu_max` |
-| Ecum_initial | Initial cumulative CO₂ emissions | tCO₂ | `Ecum_initial` |
+| Ecum_initial | Initial cumulative CO₂ emissions (633.5 GtC from DICE-2023) | tCO₂ | `Ecum_initial` |
+| H1_initial | Initial fast heat-uptake mode (τ=2.241 yr) | °C | `H1_initial` |
+| H2_initial | Initial medium heat-uptake mode (τ=35.750 yr) | °C | `H2_initial` |
+| H3_initial | Initial slow heat-uptake mode (τ=97.180 yr) | °C | `H3_initial` |
 
 **Utility, inequality, and tax parameters:**
 
@@ -685,18 +729,19 @@ state(t+dt) = state(t) + dt · tendency(t)
 **State variables:**
 - `K` — Capital stock ($)
 - `Ecum` — Cumulative CO₂ emissions (tCO₂), floored at zero
+- `H1`, `H2`, `H3` — Heat-uptake mode variables (°C), encode transient ocean response
 
 At each timestep:
 1. Evaluate all time-dependent functions and control variables at time t
 2. Call `calculate_tendencies()` to compute all model variables
-3. Euler step: update K and Ecum
+3. Euler step: update K, Ecum, H1, H2, H3
 4. Propagate damage ratios to next timestep
 
 **Output variables** in the results dictionary:
 
 | Category | Variables |
 |----------|-----------|
-| State | `K`, `Ecum` |
+| State | `K`, `Ecum`, `H1`, `H2`, `H3` |
 | Time-dependent inputs | `A`, `L`, `sigma`, `theta1`, `f`, `s`, `gini` |
 | Economic | `Y_gross`, `y_gross`, `y_damaged`, `y_net`, `AbateCost`, `lambda_abate` |
 | Climate | `delta_T`, `Omega_base`, `E` |
@@ -704,7 +749,7 @@ At each timestep:
 | Utility | `U`, `aggregate_utility` |
 | Tax diagnostics | `tax_amount`, `K_equal_utility_norm`, `max_average_tax_rate`, `max_marginal_tax_rate` |
 | Per-quantile arrays | `y_net_yi`, `omega_yi`, `utility_yi`, `average_tax_rate_yi`, `marginal_tax_rate_yi` |
-| Tendencies | `dK_dt`, `dEcum_dt` |
+| Tendencies | `dK_dt`, `dEcum_dt`, `dH1_dt`, `dH2_dt`, `dH3_dt` |
 
 ## Output Files
 
