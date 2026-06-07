@@ -21,7 +21,7 @@ from src.distribution_utilities import (
     stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, OMEGA_BASE_MAX, MK_PER_GTC_TO_C_PER_TCO2
+from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, OMEGA_BASE_MAX
 
 
 def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
@@ -165,7 +165,7 @@ def calculate_tendencies(state, params,
         - 'psi2': Quadratic climate damage coefficient (°C⁻²) [Barrage & Nordhaus 2023]
         - 'y_damage_distribution_exponent': Exponent for income-dependent damage distribution
         - 'y_net_reference': Reference income for power-law damage scaling ($/person)
-        - 'impulse_response_a1/a2/a3': Impulse response coefficients (mK/GtC)
+        - 'impulse_response_a1/a2/a3': Impulse response coefficients (°C/tCO₂)
         - 'impulse_response_tau1/tau2/tau3': Impulse response time constants (years)
         - 'eta': Coefficient of relative risk aversion
         - 'A': Total factor productivity (current)
@@ -288,12 +288,11 @@ def calculate_tendencies(state, params,
     # Main calculations
 
     # Eq 2.2: Temperature change via impulse response (Ricke & Caldeira 2014)
-    # ΔT = R_∞·Ecum + H1 + H2 + H3, where R_∞ = -(a1+a2+a3) converted to °C/tCO₂
-    conv = MK_PER_GTC_TO_C_PER_TCO2
-    a1_conv = params['impulse_response_a1'] * conv
-    a2_conv = params['impulse_response_a2'] * conv
-    a3_conv = params['impulse_response_a3'] * conv
-    R_inf = -(a1_conv + a2_conv + a3_conv)
+    # ΔT = R_∞·Ecum + H1 + H2 + H3, where R_∞ = -(a1+a2+a3)
+    a1 = params['impulse_response_a1']
+    a2 = params['impulse_response_a2']
+    a3 = params['impulse_response_a3']
+    R_inf = -(a1 + a2 + a3)
     H1 = state['H1']
     H2 = state['H2']
     H3 = state['H3']
@@ -577,10 +576,9 @@ def calculate_tendencies(state, params,
     })
 
     # Impulse response heat-uptake tendencies: dHi/dt = ai·E(t) - Hi/τi
-    # conv already computed above for delta_T
-    results['dH1_dt'] = a1_conv * dEcum_dt - H1 / params['impulse_response_tau1']
-    results['dH2_dt'] = a2_conv * dEcum_dt - H2 / params['impulse_response_tau2']
-    results['dH3_dt'] = a3_conv * dEcum_dt - H3 / params['impulse_response_tau3']
+    results['dH1_dt'] = a1 * dEcum_dt - H1 / params['impulse_response_tau1']
+    results['dH2_dt'] = a2 * dEcum_dt - H2 / params['impulse_response_tau2']
+    results['dH3_dt'] = a3 * dEcum_dt - H3 / params['impulse_response_tau3']
 
     # Always return climate damage ratio for use in next time step.
     # Store per-quantile ratio so next timestep can scale by its own Omega_base.

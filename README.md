@@ -257,17 +257,15 @@ dHi/dt = ai·E(t) - Hi/τi           (i = 1,2,3)
 ```
 where R_∞ = -(a1+a2+a3) is the equilibrium response and Hi are heat-uptake state variables that carry the memory of past emissions.
 
-Raw impulse response parameters (from Table 2, median case):
+Impulse response parameters (median case, in °C/tCO₂):
 | Parameter | Value | Units |
 |-----------|-------|-------|
-| a1 | -2.308 | mK/GtC |
-| a2 | 0.743 | mK/GtC |
-| a3 | -0.191 | mK/GtC |
+| a1 | -0.629 × 10⁻¹² | °C/tCO₂ |
+| a2 | 0.203 × 10⁻¹² | °C/tCO₂ |
+| a3 | -0.0521 × 10⁻¹² | °C/tCO₂ |
 | τ1 | 2.241 | years |
 | τ2 | 35.750 | years |
 | τ3 | 97.180 | years |
-
-Unit conversion factor: 1 mK/GtC = 10⁻³ / 3.6667×10⁹ ≈ 2.727×10⁻¹³ °C/tCO₂
 
 **Historical temperature ΔT_hist(t):**
 
@@ -477,7 +475,7 @@ These parameters are derived from DICE-2023 trajectories rather than taken direc
 
 **E_cum(2020) = 2.323 × 10¹² tCO₂** (initial cumulative emissions): Equals 633.5 GtC × 3.6667 tCO₂/tC, adopting the DICE-2023 cumulative emissions value (Barrage & Nordhaus 2024).
 
-**Impulse response parameters**: From Ricke & Caldeira 2014 (doi:10.1088/1748-9326/9/12/124002), median case. The raw coefficients (a1=-2.308, a2=0.743, a3=-0.191 mK/GtC) are converted to °C/tCO₂ via the factor 10⁻³/3.6667×10⁹. The equilibrium TCRE is R_∞ = -(a1+a2+a3) × conversion = 4.79×10⁻¹³ °C/tCO₂.
+**Impulse response parameters**: From Ricke & Caldeira 2014 (doi:10.1088/1748-9326/9/12/124002), median case. Coefficients are stored directly in °C/tCO₂: a1=-0.629×10⁻¹², a2=0.203×10⁻¹², a3=-0.0521×10⁻¹². The equilibrium TCRE is R_∞ = -(a1+a2+a3) ≈ 0.478×10⁻¹² °C/tCO₂.
 
 **H_initial values** (calibrated from pre-2020 historical emissions): Derived by assuming global cumulative emissions grew exponentially to the DICE-2023 value of 633.5 GtC (at 52.3320 GtCO₂eq/yr in 2020), convolving this trajectory with g(t₀), and reading off the exponential coefficients in ΔT_hist(2020). Values: H1=-0.07022°C, H2=0.21036°C, H3=-0.08308°C.
 

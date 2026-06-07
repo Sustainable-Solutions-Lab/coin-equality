@@ -367,9 +367,9 @@ class ScalarParameters:
     loose_epsilon: float = 1e-8
     # Impulse response temperature model (Ricke & Caldeira 2014)
     # Three-exponential convolution capturing delayed warming (~2 yr fast, ~36 yr medium, ~97 yr slow)
-    impulse_response_a1: float = IMPULSE_RESPONSE_A1    # mK/GtC
-    impulse_response_a2: float = IMPULSE_RESPONSE_A2    # mK/GtC
-    impulse_response_a3: float = IMPULSE_RESPONSE_A3    # mK/GtC
+    impulse_response_a1: float = IMPULSE_RESPONSE_A1    # °C/tCO₂
+    impulse_response_a2: float = IMPULSE_RESPONSE_A2    # °C/tCO₂
+    impulse_response_a3: float = IMPULSE_RESPONSE_A3    # °C/tCO₂
     impulse_response_tau1: float = IMPULSE_RESPONSE_TAU1  # years
     impulse_response_tau2: float = IMPULSE_RESPONSE_TAU2  # years
     impulse_response_tau3: float = IMPULSE_RESPONSE_TAU3  # years

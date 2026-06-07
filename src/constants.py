@@ -82,16 +82,12 @@ LOG_DELTAU_NO_TAX = float('-inf')
 
 # Temperature impulse response parameters (Ricke & Caldeira 2014, median)
 # doi:10.1088/1748-9326/9/12/124002
-# Functional form: ΔT(t) = -(a1+a2+a3) + a1·exp(-t/τ1) + a2·exp(-t/τ2) + a3·exp(-t/τ3)
-# where t is years after a pulse emission and ΔT is in mK per GtC emitted.
-# Asymptotic (equilibrium) TCRE = -(a1+a2+a3) = 1.756 mK/GtC
-IMPULSE_RESPONSE_A1 = -2.308       # mK/GtC (fast mode, τ ~ 2 yr)
-IMPULSE_RESPONSE_A2 = 0.743        # mK/GtC (medium mode, τ ~ 36 yr)
-IMPULSE_RESPONSE_A3 = -0.191       # mK/GtC (slow mode, τ ~ 97 yr)
+# Functional form: g(t₀) = (R_inf + a1·exp(-t₀/τ1) + a2·exp(-t₀/τ2) + a3·exp(-t₀/τ3))
+# where t₀ is years after a pulse emission and g is in °C/tCO₂.
+# R_inf = -(a1+a2+a3) ≈ 0.479e-12 °C/tCO₂ (equilibrium TCRE)
+IMPULSE_RESPONSE_A1 = -0.629e-12   # °C/tCO₂ (fast mode, τ ~ 2 yr)
+IMPULSE_RESPONSE_A2 = 0.203e-12    # °C/tCO₂ (medium mode, τ ~ 36 yr)
+IMPULSE_RESPONSE_A3 = -0.0521e-12  # °C/tCO₂ (slow mode, τ ~ 97 yr)
 IMPULSE_RESPONSE_TAU1 = 2.241      # years
 IMPULSE_RESPONSE_TAU2 = 35.750     # years
 IMPULSE_RESPONSE_TAU3 = 97.180     # years
-
-# Unit conversion: mK/GtC → °C/tCO₂
-# 1 mK = 1e-3 °C; 1 GtC = 3.6667e9 tCO₂ (molar mass ratio 44/12)
-MK_PER_GTC_TO_C_PER_TCO2 = 1e-3 / 3.6667e9
