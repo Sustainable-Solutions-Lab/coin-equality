@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from src.constants import (
     IMPULSE_RESPONSE_A1, IMPULSE_RESPONSE_A2, IMPULSE_RESPONSE_A3,
     IMPULSE_RESPONSE_TAU1, IMPULSE_RESPONSE_TAU2, IMPULSE_RESPONSE_TAU3,
+    ECUM_INITIAL,
 )
 
 
@@ -356,7 +357,7 @@ class ScalarParameters:
     use_empirical_lorenz: bool = False
     t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
     mu_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    Ecum_initial: float = 0.0  # Default to zero (no prior emissions)
+    Ecum_initial: float = ECUM_INITIAL  # Derived from ΔT_hist equation: 1.1126 / R_∞
     # Extra emission pulse parameters (for sensitivity analysis)
     year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
     amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)

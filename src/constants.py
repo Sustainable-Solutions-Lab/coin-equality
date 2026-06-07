@@ -91,3 +91,9 @@ IMPULSE_RESPONSE_A3 = -0.0521e-12  # °C/tCO₂ (slow mode, τ ~ 97 yr)
 IMPULSE_RESPONSE_TAU1 = 2.241      # years
 IMPULSE_RESPONSE_TAU2 = 35.750     # years
 IMPULSE_RESPONSE_TAU3 = 97.180     # years
+
+# ΔT_hist equilibrium constant from manuscript equation:
+# ΔT_hist(t) = 1.1126 - 0.07022·e^((2020-t)/τ1) + 0.21036·e^((2020-t)/τ2) - 0.08308·e^((2020-t)/τ3)
+# The constant term equals R_∞ × Ecum_initial, so Ecum_initial = 1.1126 / R_∞
+DELTA_T_HIST_EQUILIBRIUM = 1.1126  # °C
+ECUM_INITIAL = DELTA_T_HIST_EQUILIBRIUM / -(IMPULSE_RESPONSE_A1 + IMPULSE_RESPONSE_A2 + IMPULSE_RESPONSE_A3)
