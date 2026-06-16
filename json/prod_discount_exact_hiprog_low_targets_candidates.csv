@@ -1,0 +1,5 @@
+grid_id,neighbor_grid_id,neighbor_source_dir,neighbor_source
+1,21,prod_discount_exact_gid-21_20260616_010005,prod_discount_exact
+2,22,prod_discount_exact_gid-22_20260616_010204,prod_discount_exact
+3,21,prod_discount_exact_gid-21_20260616_010005,prod_discount_exact
+4,22,prod_discount_exact_gid-22_20260616_010204,prod_discount_exact
