@@ -1,0 +1,5 @@
+grid_id,sample_id,tax_equity,y_damage_distribution_exponent,eta,rho
+51,51,0.0,0.0,1.5,0.0163
+52,52,0.0,0.5,1.5,0.0163
+53,53,0.0,0.0,1.5,0.0217
+54,54,0.0,0.5,1.5,0.0217

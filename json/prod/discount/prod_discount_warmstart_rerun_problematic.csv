@@ -1,0 +1,16 @@
+grid_id,sweep,tax_equity,y_damage_distribution_exponent,eta,r_consumption_target,original_ocp,problem_type
+1,warmstart_rerun_problematic,0.000000,0.000000,1.500000,3.003082,108.49,duplicate
+2,warmstart_rerun_problematic,0.000000,0.000000,1.500000,3.006180,138.27,direction_change
+3,warmstart_rerun_problematic,0.000000,0.000000,1.500000,4.000489,61.00,direction_change
+4,warmstart_rerun_problematic,0.000000,0.000000,1.500000,4.000584,84.37,direction_change
+5,warmstart_rerun_problematic,0.000000,0.500000,1.500000,4.000031,236.15,direction_change
+6,warmstart_rerun_problematic,0.000000,0.500000,1.500000,4.000218,174.32,direction_change
+7,warmstart_rerun_problematic,0.000000,0.500000,1.500000,5.009416,131.80,direction_change
+8,warmstart_rerun_problematic,0.000000,0.500000,1.500000,5.013997,190.02,direction_change
+9,warmstart_rerun_problematic,0.500000,0.000000,1.500000,4.958395,56.66,direction_change
+10,warmstart_rerun_problematic,0.500000,0.000000,1.500000,5.009079,62.79,direction_change
+11,warmstart_rerun_problematic,0.500000,0.000000,1.500000,5.632042,41.74,direction_change
+12,warmstart_rerun_problematic,0.998000,0.000000,1.500000,2.994444,242.34,duplicate
+13,warmstart_rerun_problematic,0.998000,0.000000,1.500000,3.008732,198.10,direction_change
+14,warmstart_rerun_problematic,0.998000,0.000000,1.500000,6.999963,58.92,direction_change
+15,warmstart_rerun_problematic,0.998000,0.000000,1.500000,7.003566,37.64,direction_change
