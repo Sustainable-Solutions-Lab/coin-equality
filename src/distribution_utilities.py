@@ -261,36 +261,20 @@ def _phi(r):
 
 
 #========================================================================================
-# Helper functions for three-region damage lookup
+# Helper function for income-distribution damage lookup
 #========================================================================================
 
-def _get_omega_at_F(
-    F,
-    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-    Fmin_prev, Fmax_prev, xi_edges,
-):
+def _get_omega_at_F(F, omega_yi_calc, xi_edges):
     """
-    Get damage fraction at population rank F using three-region lookup.
-
-    Uses the previous timestep's three-region structure:
-    - Region 1 (F <= Fmin_prev): constant omega_Fmin_calc
-    - Region 2 (Fmin_prev < F < Fmax_prev): interpolate from omega_yi_calc
-    - Region 3 (F >= Fmax_prev): constant omega_Fmax_calc
+    Get damage fraction at population rank F by stepwise interpolation of the
+    per-quadrature-point damage fractions omega_yi_calc over the full [0, 1] range.
 
     Parameters
     ----------
     F : float or ndarray
         Population rank(s) in [0, 1]
-    omega_Fmin_calc : float
-        Damage fraction for F <= Fmin_prev (Region 1)
     omega_yi_calc : ndarray
-        Damage fractions at quadrature points (Region 2)
-    omega_Fmax_calc : float
-        Damage fraction for F >= Fmax_prev (Region 3)
-    Fmin_prev : float
-        Previous timestep's Fmin (Region 1/2 boundary)
-    Fmax_prev : float
-        Previous timestep's Fmax (Region 2/3 boundary)
+        Damage fractions at quadrature points
     xi_edges : ndarray
         Standard quadrature edges in xi space [-1, 1]
 
@@ -304,27 +288,8 @@ def _get_omega_at_F(
     if scalar_input:
         F_arr = F_arr.reshape(1)
 
-    # Fast path: previous timestep covered full [0,1] range
-    if abs(Fmin_prev) < EPSILON and abs(Fmax_prev - 1.0) < EPSILON:
-        xi_vals = 2.0 * F_arr - 1.0
-        omega = stepwise_interpolate(xi_vals, omega_yi_calc, xi_edges)
-        return float(omega[0]) if scalar_input else omega
-
-    # Three-region damage lookup
-    in_region1 = F_arr <= Fmin_prev
-    in_region3 = F_arr >= Fmax_prev
-    in_region2 = ~(in_region1 | in_region3)
-
-    omega = np.zeros_like(F_arr, dtype=float)
-    omega[in_region1] = omega_Fmin_calc
-    omega[in_region3] = omega_Fmax_calc
-
-    if np.any(in_region2):
-        F_region2 = F_arr[in_region2]
-        x_region2 = (F_region2 - Fmin_prev) / (Fmax_prev - Fmin_prev)
-        xi_region2 = 2.0 * x_region2 - 1.0
-        omega[in_region2] = stepwise_interpolate(xi_region2, omega_yi_calc, xi_edges)
-
+    xi_vals = 2.0 * F_arr - 1.0
+    omega = stepwise_interpolate(xi_vals, omega_yi_calc, xi_edges)
     return float(omega[0]) if scalar_input else omega
 
 
@@ -426,8 +391,7 @@ def find_log_deltaU_equal_utility(
     y_gross,
     gini,
     Omega_calc,
-    omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-    Fmin_prev, Fmax_prev, xi_edges,
+    omega_yi_calc, xi_edges,
     eta,
     tax_amount,
     use_empirical_lorenz,
@@ -462,16 +426,8 @@ def find_log_deltaU_equal_utility(
         Gini coefficient
     Omega_calc : float
         Aggregate climate damage fraction
-    omega_Fmin_calc : float
-        Damage fraction for F <= Fmin_prev (Region 1)
     omega_yi_calc : ndarray
-        Damage fractions at quadrature points (Region 2)
-    omega_Fmax_calc : float
-        Damage fraction for F >= Fmax_prev (Region 3)
-    Fmin_prev : float
-        Previous timestep's Fmin
-    Fmax_prev : float
-        Previous timestep's Fmax
+        Damage fractions at quadrature points
     xi_edges : ndarray
         Standard quadrature edges in xi space [-1, 1]
     eta : float
@@ -523,11 +479,7 @@ def find_log_deltaU_equal_utility(
     else:
         dLdF = L_pareto_derivative(Fi, gini)
 
-    omega_Fi = _get_omega_at_F(
-        Fi,
-        omega_Fmin_calc, omega_yi_calc, omega_Fmax_calc,
-        Fmin_prev, Fmax_prev, xi_edges,
-    )
+    omega_Fi = _get_omega_at_F(Fi, omega_yi_calc, xi_edges)
     y_F = y_gross * dLdF * (1.0 - omega_Fi)
 
     # Normalize incomes so y_F_norm is O(1). We return log_deltaU_norm directly;

@@ -412,8 +412,7 @@ def calculate_tendencies(state, params,
             t_before_find_deltaU = time.time()
             log_deltaU_norm = find_log_deltaU_equal_utility(
                 y_gross, gini, Omega_calc,
-                omega_yi_calc, omega_yi_calc, omega_yi_calc,  # Fmin=0, Fmax=1: only Region-2 array used
-                0.0, 1.0, xi_edges,
+                omega_yi_calc, xi_edges,
                 tax_exponent, tax_amount, use_empirical_lorenz,
                 tol=params['loose_epsilon'],
                 xi=xi, wi=wi,
@@ -423,7 +422,7 @@ def calculate_tendencies(state, params,
         _timing_stats['policy_calc_time'] += time.time() - t_setup
 
         # ============================================================================
-        # Single-region income distribution and utility via Gauss-Legendre quadrature on [0, 1]
+        # Income distribution and utility via Gauss-Legendre quadrature on [0, 1]
         # ============================================================================
         t_before_seg2 = time.time()
         if use_empirical_lorenz:
@@ -431,14 +430,9 @@ def calculate_tendencies(state, params,
         else:
             dLdF_Fi = L_pareto_derivative(Fi, gini)
 
-        # Previous timestep's damage at each quadrature point.
-        # Since the previous timestep also used this simplified policy, Fmin_prev=0 and Fmax_prev=1,
-        # so _get_omega_at_F takes its fast path (direct stepwise interpolation over omega_yi_calc).
-        omega_yi_prev = _get_omega_at_F(
-            Fi,
-            omega_yi_calc, omega_yi_calc, omega_yi_calc,
-            0.0, 1.0, xi_edges,
-        )
+        # Previous timestep's damage at each quadrature point (stepwise interpolation
+        # of omega_yi_calc over the full [0, 1] range).
+        omega_yi_prev = _get_omega_at_F(Fi, omega_yi_calc, xi_edges)
 
         y_pretax_yi = y_gross * dLdF_Fi * (1.0 - omega_yi_prev)
         # Evaluate the closed form in normalized units to avoid y^(1-eta) underflow at high
@@ -858,7 +852,8 @@ def create_derived_variables(results):
         - Consumption/savings: Consumption, consumption, Savings, savings
         - Other: marginal_abatement_cost, Lambda, redistribution, Redistribution_amount
         - Gini: (removed - gini_consumption, gini_utility, etc. no longer computed)
-        - Discount rate: r_consumption (annual effective discount rate on consumption)
+        - Discount rate: r_consumption (annual effective consumption discount rate from
+          the welfare-weighted Ramsey rule over the income distribution)
 
     Notes
     -----
@@ -929,28 +924,32 @@ def create_derived_variables(results):
     # Add dEcum_dt as alias to E for consistency
     dEcum_dt = E
 
-    # Compute annual effective discount rate on consumption
-    # r_consumption(t) = exp(rho * dt) * (consumption(t+dt)/consumption(t))^eta - 1.0
+    # Compute annual effective consumption discount rate via the welfare-weighted Ramsey rule.
+    #
+    # The standard Ramsey rule, r = rho + eta * g, assumes a single representative agent
+    # growing at one rate g. When income groups grow at different rates there is no unique g;
+    # the social discount rate for a marginal consumption increment distributed across society
+    # (utilitarian welfare W = sum_i Fwi * u(c_i)) is
+    #     r = rho - d/dt ln( sum_i Fwi * u'(c_i) ),   with CRRA  u'(c) = c^(-eta).
+    # Its exact discrete analog replaces the single marginal utility by the population-weighted
+    # social marginal utility summed over the quadrature income groups:
+    #     M(t)  = sum_j Fwi_j * c_yi(t)_j^(-eta)
+    #     r(t)  = exp(rho * dt) * M(t) / M(t+dt) - 1.
+    # This reduces exactly to exp(rho*dt) * (c(t+dt)/c(t))^eta - 1 when the distribution is
+    # uniform, so single-distribution results are unchanged. (Fwi and c_yi computed above.)
     t_array = results['t']
     dt = t_array[1] - t_array[0] if n_steps > 1 else 1.0
+
+    # Social marginal utility at each timestep; strictly positive because c_yi >= EPSILON.
+    social_marginal_utility = np.sum(Fwi[None, :] * c_yi ** (-eta_array[:, None]), axis=1)
+
     r_consumption = np.zeros(n_steps)
-
-    for i in range(n_steps - 1):
-        if consumption[i] > EPSILON:
-            consumption_ratio = consumption[i + 1] / consumption[i]
-            r_consumption[i] = np.exp(rho * dt) * (consumption_ratio ** eta_array[i]) - 1.0
-        else:
-            r_consumption[i] = 0.0
-
-    # For the last time step, use the consumption ratio from the previous time step
     if n_steps > 1:
-        if consumption[-2] > EPSILON:
-            consumption_ratio_last = consumption[-1] / consumption[-2]
-            r_consumption[-1] = np.exp(rho * dt) * (consumption_ratio_last ** eta_array[-1]) - 1.0
-        else:
-            r_consumption[-1] = 0.0
-    else:
-        r_consumption[0] = 0.0
+        r_consumption[:-1] = np.exp(rho * dt) * (
+            social_marginal_utility[:-1] / social_marginal_utility[1:]
+        ) - 1.0
+        # Final step has no forward data; reuse the previous step's growth (as before).
+        r_consumption[-1] = r_consumption[-2]
 
     # Add all derived variables to results dict
     results.update({

@@ -245,6 +245,31 @@ L(F) = (1 - G/Gini_base)·F + (G/Gini_base)·L_base(F)
 
 This formulation is controlled by the `use_empirical_lorenz` boolean parameter in the configuration.
 
+#### Consumption Discount Rate (Welfare-Weighted Ramsey Rule)
+
+The model reports an effective consumption discount rate `r_consumption(t)` as a derived diagnostic. The standard Ramsey rule
+
+```
+r = ρ + η·g
+```
+
+assumes a single representative agent whose consumption grows at one rate `g`. Because the model tracks a full income distribution (via Gauss-Legendre quadrature) whose shape evolves over time, different income groups grow at different rates and there is no unique `g`. The correct social discount rate for a marginal consumption increment distributed across society — under the utilitarian welfare function `W = Σᵢ ωᵢ·u(cᵢ)` used throughout the model — is the **marginal-utility-weighted** Ramsey rule:
+
+```
+r = ρ − d/dt ln( Σᵢ ωᵢ·u'(cᵢ) ),   with CRRA  u'(c) = c^(−η)
+  = ρ + η·( Σᵢ ωᵢ·cᵢ^(−η)·gᵢ ) / ( Σᵢ ωᵢ·cᵢ^(−η) )
+```
+
+where the welfare weights `ωᵢ` are the quadrature population shares and `gᵢ = ċᵢ/cᵢ` is the growth rate of income group `i`. The relevant growth rate is thus a marginal-utility-weighted average that gives more weight to lower-income (high marginal utility) groups.
+
+Writing `cᵢ = c̄·xᵢ` (mean consumption × relative consumption), the correction relative to the representative-agent rule reduces exactly to
+
+```
+r − r_representative = − d/dt ln S,   where  S = Σᵢ ωᵢ·xᵢ^(−η) ≥ 1
+```
+
+is a pure consumption-inequality index. The correction is therefore **zero when the distribution is static** (regardless of growth) and is driven entirely by how fast inequality changes: falling inequality (the poor catching up) raises `r_consumption`, while rising inequality lowers it. For configurations with a meaningfully time-varying Gini this is a first-order effect on the discount rate (on the order of ~1 percentage point per year in early decades for a strongly evolving distribution).
+
 ### Key Insights
 
 1. **Progressive taxation increases optimal carbon prices**: When climate damages fall disproportionately on the poor and taxation is progressive, the optimal carbon price rises because mitigating climate damage has higher marginal utility value.
