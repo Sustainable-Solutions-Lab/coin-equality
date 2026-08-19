@@ -1,0 +1,134 @@
+{
+  "run_name": "single_param_beta0_5_s_rho_A_gid-320",
+  "description": "Template configuration matching manuscript Table S1 parameters. Set beta (y_damage_distribution_exponent) and tau (tax_equity) for desired scenario.",
+  "scalar_parameters": {
+    "alpha": 0.3,
+    "_alpha": "Capital share of income (DICE-2023)",
+    "delta": 0.1,
+    "_delta": "Capital depreciation rate, yr^-1 (DICE-2023)",
+    "psi1": 0,
+    "_psi1": "Linear climate damage coefficient, deg C^-1 (zero in DICE-2023)",
+    "psi2": 0.003467,
+    "_psi2": "Quadratic climate damage coefficient, deg C^-2 (DICE-2023)",
+    "eta": 1.5,
+    "_eta": "Elasticity of marginal utility of consumption",
+    "rho": 0.04980255,
+    "_rho": "Effective pure rate of time preference, yr^-1 (DICE-2023 risk-adjusted rate)",
+    "theta2": 2.6,
+    "_theta2": "Abatement cost exponent (DICE-2023)",
+    "mu_max": 1e+20,
+    "_mu_max": "Maximum abatement fraction. Values > 1 allow net-negative emissions.",
+    "K_initial": 295000000000000.0,
+    "_K_initial": "Initial capital stock, $ (DICE-2023)",
+    "y_net_reference": 17210.79,
+    "_y_net_reference": "Reference income for damage power-law scaling, $/person (global mean 2020)",
+    "y_damage_distribution_exponent": 0.5,
+    "_y_damage_distribution_exponent": "beta: damage distribution exponent. 0 = uniform vulnerability (DICE default), 0.5 = increased low-income vulnerability, 1.0 = equal absolute damage",
+    "tax_equity": 0.5,
+    "_tax_equity": "tau: tax progressivity in [0, 1). 0 = flat tax, 0.5 = progressive tax, ~1 = highly progressive tax. eta_eff = 1 + tau/(1-tau) * (eta-1)",
+    "income_dependent_aggregate_damage": false,
+    "_income_dependent_aggregate_damage": "If false, aggregate damage fraction depends only on temperature (DICE-like); if true, aggregate damage decreases as world gets richer",
+    "use_empirical_lorenz": true,
+    "_use_empirical_lorenz": "If true, use empirical Lorenz curve fitted to World Bank data (G_b = 0.6813); if false, use Pareto-Lorenz",
+    "t_base": 2020.0,
+    "_t_base": "Base year. Time functions receive (t - t_base).",
+    "year_extra_emission": 0.0,
+    "amount_extra_emission": 0.0,
+    "year_extra_consumption": 0.0,
+    "amount_extra_consumption": 0.0,
+    "loose_epsilon": 1e-09,
+    "_loose_epsilon": "Convergence tolerance for Brent's-method root solve"
+  },
+  "time_functions": {
+    "A": {
+      "_description": "Total factor productivity, Gompertz: A(t) = 4.907e6 * exp(ln(739.6/4.907e6) * exp(-0.0015 * (t-2020)))",
+      "type": "gompertz_growth",
+      "initial_value": 739.619,
+      "final_value": 4906815.811,
+      "adjustment_coefficient": -0.0015
+    },
+    "L": {
+      "_description": "Population, Gompertz: L(t) = 1.0825e10 * exp(ln(7.752e9/1.0825e10) * exp(-0.03133 * (t-2020)))",
+      "type": "gompertz_growth",
+      "initial_value": 7752000000.0,
+      "final_value": 10825000000.0,
+      "adjustment_coefficient": -0.03133
+    },
+    "sigma": {
+      "_description": "Carbon intensity of GDP, tCO2/$, Gompertz",
+      "type": "gompertz_growth",
+      "initial_value": 0.000291355,
+      "final_value": 4.4681e-05,
+      "adjustment_coefficient": -0.008164
+    },
+    "theta1": {
+      "_description": "Backstop cost at mu=1, $/tCO2. theta1(t) = 6035.6 * (0.906*exp(-0.224*t) + 0.094*exp(-0.00112*t))",
+      "type": "double_exponential_growth",
+      "initial_value": 6035.6,
+      "growth_rate_1": -0.224,
+      "growth_rate_2": -0.00112,
+      "fract_1": 0.906
+    },
+    "gini": {
+      "_description": "Gini coefficient, SSP2 projection: G(t) = 0.19517*exp(-0.01058*t) + 0.37796. G(0)=0.573, G(2100)=0.462, G(inf)=0.378",
+      "type": "exponential_growth",
+      "exponential_scaling": 0.19517,
+      "additive_constant": 0.37796,
+      "growth_rate": -0.01058
+    },
+    "emission_ratio": {
+      "_description": "CO2-equivalent to CO2 ratio. 1.40 at 2020, declining per DICE-2023",
+      "type": "exponential_growth",
+      "exponential_scaling": 1.4,
+      "growth_rate": -0.002085,
+      "additive_constant": 0.0
+    },
+    "Eland": {
+      "_description": "Land-use emissions, tCO2/yr. 5.9 GtCO2/yr at 2020, declining at 2.1%/yr (DICE-2023)",
+      "type": "exponential_growth",
+      "exponential_scaling": 5900000000.0,
+      "growth_rate": -0.02107,
+      "additive_constant": 0.0
+    }
+  },
+  "integration_parameters": {
+    "t_start": 2020.0,
+    "t_end": 2420.0,
+    "_t_end": "400-year integration horizon",
+    "dt": 1.0,
+    "_dt": "1-year Euler timestep",
+    "plot_short_horizon": 100.0,
+    "n_quad": 32,
+    "_n_quad": "Gauss-Legendre quadrature nodes for income distribution integrals"
+  },
+  "optimization_parameters": {
+    "max_evaluations_initial": 2000,
+    "max_evaluations_final": 100000,
+    "max_evaluations_time_points": 320,
+    "optimization_iterations": 5,
+    "optimize_time_points": false,
+    "n_points_initial_f": 4,
+    "n_points_final_f": 24,
+    "_n_points_final_f": "24 control points for log10(carbon price), distributed 2020-2220",
+    "initial_guess_f": 2.5,
+    "_initial_guess_f": "log10(MAC in $/tCO2). 2.5 = $316/tCO2 initial guess (avoids near-zero abatement trap)",
+    "bounds_f": [
+      -1.0,
+      4.0
+    ],
+    "_bounds_f": "MAC from $0.10 to $10,000",
+    "initial_guess_s": 0.256,
+    "_initial_guess_s": "Initial savings rate guess. Presence enables dual optimization of f and s.",
+    "bounds_s": [
+      0.0,
+      1.0
+    ],
+    "n_points_initial_s": 4,
+    "n_points_final_s": 24,
+    "_n_points_final_s": "24 control points for savings rate, distributed 2020-2220",
+    "algorithm": "LN_SBPLX",
+    "xtol_abs": 1e-08,
+    "looser_epsilon": 1e-07,
+    "_bounds_s_note": "FREE savings rate \u2014 Stage 0 test whether the [0.2, 0.4] constraint drives fig6 bumps"
+  }
+}
