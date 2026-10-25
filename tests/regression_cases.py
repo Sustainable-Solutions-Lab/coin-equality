@@ -69,6 +69,8 @@ O2_CALIBRATION_PERTURBATIONS = [1e-10, -1e-10]
 REMOVED_OUTPUT_KEYS = {
     # Phase 1: vestigial welfare-adjusted MAC diagnostics (wMAC == MAC by construction)
     'mu_dollar_numeraire', 'mu_dollar_cost', 'welfare_adjusted_mac', 'mac_over_wmac',
+    # Phase 6: duplicate of gini, and aliases of lambda_abate and E
+    'Gini', 'Lambda', 'dEcum_dt',
 }
 
 # Worst relative difference per case, collected by the tests and printed by conftest.py.

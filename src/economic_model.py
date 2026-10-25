@@ -423,7 +423,7 @@ def integrate_model(config, f_values, s_values, store_detailed_output):
     dict
         Always 't' (calendar years) and 'U' (aggregate utility). With store_detailed_output,
         also the state ('K', 'Ecum', 'H1', 'H2', 'H3'), the reported inputs
-        (REPORTED_INPUTS, plus 'Gini', the same as 'gini'), the per-step diagnostics of
+        (REPORTED_INPUTS), the per-step diagnostics of
         calculate_tendencies (per-quantile ones as (n_steps, n_quad) arrays) and the
         quadrature grid ('xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges').
 
@@ -473,7 +473,6 @@ def integrate_model(config, f_values, s_values, store_detailed_output):
 
     results = {name: np.array([record[name] for record in step_records], dtype=float) for name in step_records[0]}
     results.update({name: np.asarray(inputs[name], dtype=float) for name in REPORTED_INPUTS})
-    results['Gini'] = results['gini']
     results.update({
         't': t_array,
         'U': U,
@@ -505,7 +504,6 @@ def create_derived_variables(results, scalar_params):
           Y_net, AbateCost, E, Climate_damage
         - Consumption, consumption, Savings, savings
         - marginal_abatement_cost from mu (standard DICE formula)
-        - aliases Lambda (= lambda_abate) and dEcum_dt (= E)
         - r_consumption: annual effective consumption discount rate from the
           welfare-weighted Ramsey rule over the income distribution
     """
@@ -572,8 +570,6 @@ def create_derived_variables(results, scalar_params):
         'Savings': Savings,
         'savings': savings,
         'marginal_abatement_cost': marginal_abatement_cost,
-        'Lambda': results['lambda_abate'],
-        'dEcum_dt': E,
         'r_consumption': r_consumption,
     })
     return results

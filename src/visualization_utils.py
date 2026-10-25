@@ -194,13 +194,13 @@ def create_results_report_pdf(case_data, output_pdf, config_filename=None):
         # Abatement and Damage
         ('f', 'log₁₀(MAC) (log₁₀($/tCO₂))', 'Control: log₁₀(Marginal Abatement Cost)'),
         ('mu', 'Abatement fraction', 'Emissions Abatement Fraction'),
-        ('Lambda', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),
+        ('lambda_abate', 'Abatement cost fraction', 'Abatement Cost (% of Output)'),
         ('AbateCost', 'Abatement cost ($/yr)', 'Total Abatement Cost'),
         ('Omega', 'Climate damage fraction', 'Climate Damage (% of Output)'),
         ('Climate_damage', 'Climate damage ($/yr)', 'Total Climate Damage'),
 
         # Inequality and Utility
-        ('Gini', 'Gini before redistribution', 'Background Gini Index'),
+        ('gini', 'Background Gini index', 'Background Gini Index'),
         ('U', 'Mean utility', 'Mean Utility Per Capita'),
         ('redistribution', 'Per-capita redistribution ($/person/yr)', 'Per-Capita Redistribution'),
         ('Redistribution_amount', 'Total redistribution ($/yr)', 'Total Redistribution'),

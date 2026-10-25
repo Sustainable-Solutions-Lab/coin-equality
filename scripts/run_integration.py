@@ -275,14 +275,14 @@ def main():
     print(f'  Capital stock (K):            {results["K"][0]:.3e} $')
     print(f'  Cumulative emissions (Ecum):  {results["Ecum"][0]:.3e} tCO2')
     print(f'  Temperature change (ΔT):      {results["delta_T"][0]:.3f} °C')
-    print(f'  Gini index:                   {results["Gini"][0]:.4f}')
+    print(f'  Gini index:                   {results["gini"][0]:.4f}')
     print(f'  Mean utility (U):             {results["U"][0]:.6f}')
 
     print(f'\nFinal State (t={results["t"][-1]:.1f} yr):')
     print(f'  Capital stock (K):            {results["K"][-1]:.3e} $')
     print(f'  Cumulative emissions (Ecum):  {results["Ecum"][-1]:.3e} tCO2')
     print(f'  Temperature change (ΔT):      {results["delta_T"][-1]:.3f} °C')
-    print(f'  Gini index:                   {results["Gini"][-1]:.4f}')
+    print(f'  Gini index:                   {results["gini"][-1]:.4f}')
     print(f'  Mean utility (U):             {results["U"][-1]:.6f}')
 
     # Save results

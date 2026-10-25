@@ -42,7 +42,6 @@ VARIABLE_METADATA = {
     'theta1': {'description': 'Marginal Abatement Cost at mu=1', 'units': '$/tCO₂', 'group': 'abatement'},
     's': {'description': 'Savings Rate', 'units': '', 'group': 'policy'},
     'gini': {'description': 'Background Gini Index', 'units': '', 'group': 'inequality'},
-    'Gini': {'description': 'Gini Index', 'units': '', 'group': 'inequality'},
     'tax_amount': {'description': 'Per-Capita Tax Amount', 'units': '$/person', 'group': 'policy'},
     'climate_damage': {'description': 'Per-Capita Climate Damage', 'units': '$/person', 'group': 'climate'},
     'aggregate_utility': {'description': 'Aggregate Utility', 'units': '', 'group': 'inequality'},
@@ -57,7 +56,7 @@ VARIABLE_GROUPS = {
         {'type': 'combined', 'title': 'Control Variables', 'variables': ['f', 's'], 'units': 'see legend'},
         {'type': 'single', 'variables': ['mu']},
         {'type': 'combined', 'title': 'Economic Impact Fractions', 'variables': ['Omega', 'lambda_abate'], 'units': 'fraction'},
-        {'type': 'single', 'variables': ['Gini']},
+        {'type': 'single', 'variables': ['gini']},
         {'type': 'combined', 'title': 'Max Tax Rates', 'variables': ['max_average_tax_rate', 'max_marginal_tax_rate'], 'units': 'dimensionless'},
         {'type': 'single', 'variables': ['U']},
     ],
@@ -278,7 +277,6 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         # State variables
         'K',  # Capital stock
         'gini',  # Background Gini index
-        'Gini',  # Gini index
         'Ecum',  # Cumulative emissions
         'delta_T',  # Global mean temperature change
         # Per capita variables
@@ -326,7 +324,6 @@ def write_results_csv(results, output_dir, run_name='', filename='results.csv'):
         's': ('Savings rate', 'dimensionless'),
         'K': ('Capital stock', '$'),
         'gini': ('Background Gini index', 'dimensionless'),
-        'Gini': ('Gini index', 'dimensionless'),
         'Ecum': ('Cumulative CO2 emissions', 'tCO2'),
         'delta_T': ('Global mean temperature change', '°C'),
         'y_gross': ('Per-capita gross income', '$/person/yr'),
