@@ -1,20 +1,16 @@
 """
-Income distribution functions and utility integration over Lorenz distributions.
+Income distribution functions for the quadrature over population rank F in [0, 1].
 
 This module provides:
-- Pareto-Lorenz and Empirical income distribution calculations
-- Progressive taxation and targeted redistribution
-- CRRA utility integration over income distributions
-- Climate damage integration over income distributions
-- Stepwise interpolation and integration utilities for quadrature
+- Pareto-Lorenz and empirical Lorenz curves and their derivatives
+- Equal-utility-loss progressive taxation (closed-form schedule and revenue root solve)
+- Stepwise interpolation of per-quadrature-point values
 """
 
-import math
 import numpy as np
-from scipy.optimize import root_scalar, fsolve, newton
+from scipy.optimize import root_scalar
 from src.constants import (
     EPSILON,
-    MAX_ITERATIONS,
     LOG_DELTAU_NO_TAX,
     EMPIRICAL_LORENZ_P0,
     EMPIRICAL_LORENZ_P1,
@@ -39,21 +35,6 @@ def a_from_G(G):
     return (1.0 + 1.0/G) / 2.0
 
 
-def L_pareto(F, G):
-    """Lorenz curve at F for Pareto-Lorenz distribution with Gini coefficient G."""
-    a = a_from_G(G)
-    F_arr = np.asarray(F)
-    scalar_input = np.ndim(F) == 0
-
-    # Clip F to avoid numerical issues when F is very close to 1.0
-    # When F = 1.0, L should equal 1.0 (everyone has accumulated all income)
-    F_clipped = np.clip(F_arr, 0.0, 1.0 - EPSILON)
-    exponent = 1.0 - 1.0/a
-    result = 1.0 - (1.0 - F_clipped)**exponent
-
-    return result[()] if scalar_input else result
-
-
 def L_pareto_derivative(F, G):
     """Derivative of Lorenz curve dL/dF at F for Pareto-Lorenz distribution with Gini coefficient G."""
     a = a_from_G(G)
@@ -64,46 +45,6 @@ def L_pareto_derivative(F, G):
     result = (1.0 - 1.0/a) * (1.0 - F_clipped)**(-1.0/a)
 
     return result[()] if scalar_input else result
-
-
-def L_pareto_and_derivative(F, G):
-    """
-    Compute both Lorenz curve L(F) and its derivative dL/dF(F) for Pareto-Lorenz distribution.
-
-    This is more efficient than calling L_pareto and L_pareto_derivative separately,
-    as it avoids redundant computation of a_from_G(G) and (1-F) terms.
-
-    Parameters
-    ----------
-    F : float or array-like
-        Population rank(s) in [0,1]
-    G : float
-        Gini coefficient
-
-    Returns
-    -------
-    tuple of (float or ndarray, float or ndarray)
-        (L, dL_dF) - Lorenz curve value and its derivative at F
-    """
-    a = a_from_G(G)
-    F_arr = np.asarray(F)
-    scalar_input = np.ndim(F) == 0
-
-    # Clip F for L computation
-    F_clipped_L = np.clip(F_arr, 0.0, 1.0 - EPSILON)
-    one_minus_F_L = 1.0 - F_clipped_L
-    exponent = 1.0 - 1.0/a
-    L_result = 1.0 - one_minus_F_L**exponent
-
-    # Clip F for dL/dF computation
-    F_clipped_dL = np.clip(F_arr, EPSILON, 1.0 - EPSILON)
-    one_minus_F_dL = 1.0 - F_clipped_dL
-    dL_result = exponent * one_minus_F_dL**(-1.0/a)
-
-    if scalar_input:
-        return L_result[()], dL_result[()]
-    else:
-        return L_result, dL_result
 
 
 def L_empirical_lorenz_base(F):
@@ -210,54 +151,6 @@ def L_empirical_lorenz_derivative(F, G):
     dL_base_dF = L_empirical_lorenz_base_derivative(F_arr)
     result = (1.0 - alpha) + alpha * dL_base_dF
     return result[()] if scalar_input else result
-
-
-def L_empirical_lorenz_and_derivative(F, G):
-    """
-    Compute both empirical Lorenz curve L(F) and its derivative dL/dF(F).
-
-    This is more efficient than calling L_empirical_lorenz and L_empirical_lorenz_derivative
-    separately, as it avoids redundant computation of alpha and F array processing.
-
-    Parameters
-    ----------
-    F : float or array-like
-        Population rank(s) in [0,1]
-    G : float
-        Gini coefficient
-
-    Returns
-    -------
-    tuple of (float or ndarray, float or ndarray)
-        (L, dL_dF) - Lorenz curve value and its derivative at F
-    """
-    alpha = G / EMPIRICAL_LORENZ_BASE_GINI
-    F_arr = np.asarray(F)
-    scalar_input = np.ndim(F) == 0
-
-    # Compute base Lorenz curve and its derivative together
-    L_base = L_empirical_lorenz_base(F_arr)
-    dL_base_dF = L_empirical_lorenz_base_derivative(F_arr)
-
-    # Apply linear interpolation to both
-    L_result = (1.0 - alpha) * F_arr + alpha * L_base
-    dL_result = (1.0 - alpha) + alpha * dL_base_dF
-
-    if scalar_input:
-        return L_result[()], dL_result[()]
-    else:
-        return L_result, dL_result
-
-
-def _phi(r):
-    """Helper for bracketing cap; φ(r) = (r-1) r^{1/(r-1)-1}."""
-    if r <= 0:
-        return float("-inf")
-    if abs(r - 1.0) < EPSILON:
-        return 0.0
-    sgn = 1.0 if r > 1.0 else -1.0
-    log_abs = math.log(abs(r - 1.0)) + (1.0/(r - 1.0) - 1.0) * math.log(r)
-    return sgn * math.exp(log_abs)
 
 
 #========================================================================================
@@ -593,69 +486,3 @@ def stepwise_interpolate(F, yi, Fi_edges):
     result = yi[indices]
 
     return result[0] if scalar_input else result
-
-
-def stepwise_integrate(F0, F1, yi, Fi_edges):
-    """
-    Integrate a stepwise (piecewise constant) function from F0 to F1.
-
-    The stepwise function has value yi[i] over interval [Fi_edges[i], Fi_edges[i+1]).
-
-    Parameters
-    ----------
-    F0 : float
-        Lower integration bound.
-    F1 : float
-        Upper integration bound.
-    yi : ndarray
-        Values at quadrature points (length N). yi[i] is the constant value
-        in interval [Fi_edges[i], Fi_edges[i+1]).
-    Fi_edges : ndarray
-        Interval boundaries (length N+1), must be monotonically increasing.
-
-    Returns
-    -------
-    float
-        Integral of the stepwise function from F0 to F1.
-
-    Notes
-    -----
-    - Handles F0 and F1 outside [Fi_edges[0], Fi_edges[-1]] by extending boundary values
-    - For F0 > F1, returns negative of integral from F1 to F0
-    """
-    # Handle reversed bounds
-    if F1 < F0:
-        return -stepwise_integrate(F1, F0, yi, Fi_edges)
-
-    # Clip bounds to valid range
-    F0_clip = np.clip(F0, Fi_edges[0], Fi_edges[-1])
-    F1_clip = np.clip(F1, Fi_edges[0], Fi_edges[-1])
-
-    # Find which intervals F0 and F1 fall into
-    i0 = np.searchsorted(Fi_edges, F0_clip, side='right') - 1
-    i1 = np.searchsorted(Fi_edges, F1_clip, side='right') - 1
-
-    # Clip to valid indices
-    i0 = np.clip(i0, 0, len(yi) - 1)
-    i1 = np.clip(i1, 0, len(yi) - 1)
-
-    # Same interval case
-    if i0 == i1:
-        return yi[i0] * (F1_clip - F0_clip)
-
-    # Multiple intervals case
-    integral = 0.0
-
-    # Partial contribution from first interval
-    integral += yi[i0] * (Fi_edges[i0 + 1] - F0_clip)
-
-    # Full contributions from middle intervals
-    for k in range(i0 + 1, i1):
-        integral += yi[k] * (Fi_edges[k + 1] - Fi_edges[k])
-
-    # Partial contribution from last interval
-    integral += yi[i1] * (F1_clip - Fi_edges[i1])
-
-    return integral
-
-

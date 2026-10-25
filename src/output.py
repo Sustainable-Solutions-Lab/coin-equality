@@ -150,7 +150,7 @@ def copy_config_file(config_path, output_dir):
     return output_path
 
 
-def write_optimization_summary(opt_results, sensitivity_results, output_dir, run_name, filename='optimization_summary.csv', t_base=0.0):
+def write_optimization_summary(opt_results, output_dir, run_name, filename='optimization_summary.csv', t_base=0.0):
     """
     Write optimization summary statistics to CSV file.
 
@@ -158,8 +158,6 @@ def write_optimization_summary(opt_results, sensitivity_results, output_dir, run
     ----------
     opt_results : dict
         Optimization results from UtilityOptimizer
-    sensitivity_results : dict or None
-        Sensitivity analysis results (optional)
     output_dir : str
         Directory to write CSV file
     run_name : str
@@ -182,7 +180,6 @@ def write_optimization_summary(opt_results, sensitivity_results, output_dir, run
     - Number of function evaluations
     - Convergence status
     - Iteration-by-iteration results (for iterative refinement mode)
-    - Sensitivity analysis statistics (if provided)
     """
     csv_path = os.path.join(output_dir, f"{run_name}_{filename}")
 
@@ -281,13 +278,6 @@ def write_optimization_summary(opt_results, sensitivity_results, output_dir, run
                 for _ in range(max_points - len(control_times)):
                     row.append('')
                 writer.writerow(row)
-
-        if sensitivity_results:
-            writer.writerow([])
-            writer.writerow(['Sensitivity Analysis'])
-            writer.writerow(['f_Value', 'Objective'])
-            for f_val, obj in zip(sensitivity_results['f_values'], sensitivity_results['objectives']):
-                writer.writerow([f"{f_val:.6f}", f"{obj:.6e}"])
 
     return csv_path
 
@@ -477,13 +467,7 @@ def write_distribution_xlsx(results, output_dir, run_name, filename='distributio
 
     with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
         # Sheet 1: Quadrature information
-        quad_df = pd.DataFrame({
-            'xi': results['xi'],
-            'wi': results['wi'],
-            'Fi': results['Fi'],
-            'Fwi': results['Fwi'],
-        })
-        # Add edges separately since they have different length
+        # Edges have one more entry than nodes, so build columns as Series of unequal length
         max_len = max(len(results['xi']), len(results['xi_edges']))
         quad_df_full = pd.DataFrame(index=range(max_len))
         quad_df_full['xi'] = pd.Series(results['xi'])

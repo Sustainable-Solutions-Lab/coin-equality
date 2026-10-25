@@ -31,16 +31,6 @@ OBJECTIVE_SCALE = 1e-13
 # - Detecting when parameters should trigger special case handling
 INVERSE_EPSILON = 1.0 / EPSILON
 
-# Maximum iterations for convergence loops
-# Used for:
-# - Initial capital stock convergence in integrate_model()
-# - Climate damage convergence in calculate_tendencies()
-# Set to 256 to allow slow but steady convergence during optimization
-MAX_ITERATIONS = 1024
-
-# N_QUAD removed - now specified in config.integration_params.n_quad
-# This enforces explicit configuration (no defaults)
-
 # Empirical Lorenz curve base parameters
 # The base empirical Lorenz curve is: L_base(F) = w₀·F^p₀ + w₁·F^p₁ + w₂·F^p₂ + w₃·F^p₃
 # where w₀ = 1 - w₁ - w₂ - w₃

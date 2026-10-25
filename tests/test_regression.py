@@ -16,7 +16,6 @@ import pytest
 
 from src.parameters import load_configuration
 from tests.regression_cases import (
-    REPO_ROOT,
     BASELINE_DIR,
     CASES_DIR,
     NINE_CASES_DIR,

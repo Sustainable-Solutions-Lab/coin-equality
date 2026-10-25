@@ -12,8 +12,8 @@ import sys
 import time
 from scipy.interpolate import PchipInterpolator
 from src.economic_model import integrate_model
-from src.parameters import ModelConfiguration
-from src.constants import EPSILON, NEG_BIGNUM
+from src.parameters import ModelConfiguration, create_f_and_s_control_from_single
+from src.constants import NEG_BIGNUM
 
 
 def requires_gradient(algorithm_name):
@@ -413,10 +413,6 @@ class UtilityOptimizer:
         """
         self.base_config = base_config
         self.n_evaluations = 0
-        self.best_objective = -np.inf
-        self.best_control_values = None
-        self.degenerate_case = False
-        self.degenerate_reason = None
 
     def calculate_objective(self, control_values, control_times, s_control_values=None, s_control_times=None):
         """
@@ -458,16 +454,9 @@ class UtilityOptimizer:
             s_control_points = list(zip(s_control_times, s_control_values))
             control_function = create_f_and_s_control_function_from_points(f_control_points, s_control_points)
         else:
-            # Single optimization mode: only f is optimized, s is fixed from time_functions or initial_guess
+            # Only f is optimized; s follows its prescribed time function
             f_control = create_control_function_from_points(f_control_points)
-            if 's' in self.base_config.time_functions:
-                s_time_function = self.base_config.time_functions['s']
-            else:
-                # Use the s control function from the base config
-                base_s_func = lambda t: self.base_config.control_function(t)[1]
-                s_time_function = base_s_func
-            from src.parameters import create_f_and_s_control_from_single
-            control_function = create_f_and_s_control_from_single(f_control, s_time_function)
+            control_function = create_f_and_s_control_from_single(f_control, self.base_config.time_functions['s'])
 
         config = ModelConfiguration(
             run_name=self.base_config.run_name,
@@ -475,7 +464,6 @@ class UtilityOptimizer:
             time_functions=self.base_config.time_functions,
             integration_params=self.base_config.integration_params,
             optimization_params=self.base_config.optimization_params,
-            initial_state=self.base_config.initial_state,
             control_function=control_function
         )
 
@@ -492,7 +480,6 @@ class UtilityOptimizer:
         rho = self.base_config.scalar_params.rho
         t = results['t']
         U = results['U']
-        L = results['L']
 
         # Discount relative to simulation start (elapsed time), not calendar year
         t_start = self.base_config.integration_params.t_start
@@ -502,45 +489,7 @@ class UtilityOptimizer:
         # np.trapezoid for numerically integrates by drawing a straight line between points
         objective_value = np.trapezoid(integrand, t)
 
-        if objective_value > self.best_objective:
-            self.best_objective = objective_value
-            self.best_control_values = control_values.copy()
-
         return objective_value
-
-    def sensitivity_analysis(self, f_values):
-        """
-        Evaluate objective function at multiple fixed f values.
-
-        Useful for understanding the objective function landscape and
-        validating optimization results.
-
-        Parameters
-        ----------
-        f_values : array_like
-            Array of f values to evaluate (each should be in [0, 1])
-
-        Returns
-        -------
-        dict
-            Results containing:
-            - 'f_values': input f values
-            - 'objectives': corresponding objective values
-            - 'n_evaluations': total evaluations performed
-        """
-        self.n_evaluations = 0
-        control_times = [self.base_config.integration_params.t_start]
-
-        objectives = []
-        for f_val in f_values:
-            obj = self.calculate_objective([f_val], control_times)
-            objectives.append(obj)
-
-        return {
-            'f_values': np.array(f_values),
-            'objectives': np.array(objectives),
-            'n_evaluations': self.n_evaluations
-        }
 
     def optimize_control_points(self, control_times, initial_guess, max_evaluations,
                                          algorithm=None, ftol_rel=None, ftol_abs=None, xtol_rel=None, xtol_abs=None):
@@ -583,10 +532,6 @@ class UtilityOptimizer:
             - 'algorithm': algorithm name used
         """
         self.n_evaluations = 0
-        self.best_objective = -np.inf
-        self.best_control_values = None
-        self.degenerate_case = False
-        self.degenerate_reason = None
 
         if algorithm is None:
             algorithm = 'LN_SBPLX'
@@ -708,10 +653,6 @@ class UtilityOptimizer:
             Optimization results with separate f and s control points
         """
         self.n_evaluations = 0
-        self.best_objective = -np.inf
-        self.best_control_values = None
-        self.degenerate_case = False
-        self.degenerate_reason = None
 
         if algorithm is None:
             algorithm = 'LN_SBPLX'
@@ -941,7 +882,6 @@ class UtilityOptimizer:
             - Both f and s times enforce dt spacing constraints
         """
         self.n_evaluations = 0
-        self.best_objective = -np.inf
 
         f_times = np.array([pt[0] for pt in initial_f_control_points])
         f_values = np.array([pt[1] for pt in initial_f_control_points])

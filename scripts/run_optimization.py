@@ -18,14 +18,11 @@ import time
 import json
 import argparse
 import tempfile
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 from io import StringIO
-from matplotlib.backends.backend_pdf import PdfPages
-from src.parameters import load_configuration, ModelConfiguration
-from src.optimization import UtilityOptimizer, create_control_function_from_points
+from src.parameters import load_configuration, ModelConfiguration, create_f_and_s_control_from_single
+from src.optimization import UtilityOptimizer, create_control_function_from_points, create_f_and_s_control_function_from_points
 from src.economic_model import integrate_model, create_derived_variables
 from src.output import save_results, write_optimization_summary, copy_config_file, create_output_directory
 from src.visualization_utils import create_results_report_pdf
@@ -217,229 +214,6 @@ def print_optimization_results(opt_results, n_control_points, t_base=0.0):
     print(f"Status:                 {opt_results['status']}")
 
 
-def run_sensitivity_analysis(optimizer, n_points=21):
-    """
-    Run sensitivity analysis across f values from 0 to 1.
-
-    Parameters
-    ----------
-    optimizer : UtilityOptimizer
-        Optimizer instance
-    n_points : int
-        Number of points to evaluate (default: 21)
-
-    Returns
-    -------
-    dict
-        Sensitivity analysis results
-    """
-    print_header("SENSITIVITY ANALYSIS")
-    print(f"Evaluating objective function at {n_points} points from f=0 to f=1...")
-
-    f_values = np.linspace(0, 1, n_points)
-    results = optimizer.sensitivity_analysis(f_values)
-
-    print(f"\nCompleted {results['n_evaluations']} evaluations")
-    print(f"\nObjective value range:")
-    print(f"  Minimum: {results['objectives'].min():.6e} at f={f_values[results['objectives'].argmin()]:.3f}")
-    print(f"  Maximum: {results['objectives'].max():.6e} at f={f_values[results['objectives'].argmax()]:.3f}")
-
-    return results
-
-
-
-
-def compare_scenarios(config, f_values, labels):
-    """
-    Run model with different constant f values for comparison.
-
-    Parameters
-    ----------
-    config : ModelConfiguration
-        Base configuration
-    f_values : list of float
-        List of f values to compare
-    labels : list of str
-        Labels for each scenario
-
-    Returns
-    -------
-    dict
-        Dictionary mapping labels to results
-    """
-    print_header("COMPARING SCENARIOS")
-
-    comparison_results = {}
-
-    for f_val, label in zip(f_values, labels):
-        print(f"Running scenario: {label} (f={f_val:.4f})...")
-
-        scenario_config = ModelConfiguration(
-            run_name=config.run_name,
-            scalar_params=config.scalar_params,
-            time_functions=config.time_functions,
-            integration_params=config.integration_params,
-            optimization_params=config.optimization_params,
-            initial_state=config.initial_state,
-            control_function=create_control_function_from_points([(0, f_val)])
-        )
-
-        results = integrate_model(scenario_config)
-        results = create_derived_variables(results)
-
-        rho = config.scalar_params.rho
-        t = results['t']
-        U = results['U']
-        L = results['L']
-        # Discount relative to simulation start (elapsed time), not calendar year
-        t_start = config.integration_params.t_start
-        discount_factors = np.exp(-rho * (t - t_start))
-        integrand = discount_factors * U * L
-        objective = np.trapezoid(integrand, t)
-
-        comparison_results[label] = {
-            'f': f_val,
-            'objective': objective,
-            'results': results
-        }
-
-        print(f"  Objective: {objective:.6e}")
-
-    return comparison_results
-
-
-def create_visualization_plots(sensitivity_results, opt_results, comparison_results, run_name, output_pdf):
-    """
-    Create visualization plots and save to PDF.
-
-    Parameters
-    ----------
-    sensitivity_results : dict
-        Results from sensitivity analysis
-    opt_results : dict
-        Results from optimization
-    comparison_results : dict
-        Results from scenario comparison
-    run_name : str
-        Name of the model run to display in header
-    output_pdf : str
-        Path to output PDF file
-    """
-    print_header("GENERATING VISUALIZATION PLOTS")
-    print(f"Creating plots in: {output_pdf}")
-
-    with PdfPages(output_pdf) as pdf:
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle(f'{run_name} - Single Control Point Optimization Results', fontsize=14, fontweight='bold')
-
-        f_vals = sensitivity_results['f_values']
-        obj_vals = sensitivity_results['objectives']
-        f_opt = opt_results['optimal_values'][0]
-        obj_opt = opt_results['optimal_objective']
-
-        ax = axes[0, 0]
-        ax.plot(f_vals, obj_vals, 'b-', linewidth=2, label='Objective function')
-        ax.plot(f_opt, obj_opt, 'r*', markersize=15, label=f'Optimum (f={f_opt:.4f})')
-        ax.set_xlabel('log₁₀(MAC) f', fontsize=11)
-        ax.set_ylabel('Discounted utility', fontsize=11)
-        ax.set_title('Objective Function Landscape', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=10)
-
-        ax = axes[0, 1]
-        colors = ['red', 'blue', 'green', 'orange', 'purple']
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            G_eff = data['results']['G_eff']
-            ax.plot(t, G_eff, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Effective Gini index', fontsize=11)
-        ax.set_title('Inequality Over Time', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-
-        ax = axes[1, 0]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            delta_T = data['results']['delta_T']
-            ax.plot(t, delta_T, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Temperature change (°C)', fontsize=11)
-        ax.set_title('Climate Warming Over Time', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-
-        ax = axes[1, 1]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            U = data['results']['U']
-            ax.plot(t, U, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Mean utility', fontsize=11)
-        ax.set_title('Mean Utility Over Time', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-
-        plt.tight_layout()
-        pdf.savefig(fig)
-        plt.close()
-
-        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-        fig.suptitle(f'{run_name} - Economic and Emissions Comparison', fontsize=14, fontweight='bold')
-
-        ax = axes[0, 0]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            y_net = data['results']['y_net']
-            ax.plot(t, y_net, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Effective per-capita income ($)', fontsize=11)
-        ax.set_title('Per-Capita Income Over Time', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-        ax.ticklabel_format(style='scientific', axis='y', scilimits=(0, 0))
-
-        ax = axes[0, 1]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            mu = data['results']['mu']
-            ax.plot(t, mu, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Abatement fraction μ', fontsize=11)
-        ax.set_title('Emissions Abatement Fraction', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-
-        ax = axes[1, 0]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            E = data['results']['E']
-            ax.plot(t, E, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Emissions (tCO₂/yr)', fontsize=11)
-        ax.set_title('CO₂ Emissions Rate Over Time', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-        ax.ticklabel_format(style='scientific', axis='y', scilimits=(0, 0))
-
-        ax = axes[1, 1]
-        for (label, data), color in zip(comparison_results.items(), colors):
-            t = data['results']['t']
-            Lambda = data['results']['Lambda']
-            ax.plot(t, Lambda, label=label, linewidth=2, color=color)
-        ax.set_xlabel('Time (years)', fontsize=11)
-        ax.set_ylabel('Abatement cost fraction Λ', fontsize=11)
-        ax.set_title('Abatement Cost as Fraction of GDP', fontsize=12, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(fontsize=9)
-
-        plt.tight_layout()
-        pdf.savefig(fig)
-        plt.close()
-
-    print(f"Saved visualization plots to: {output_pdf}")
-
-
 def main():
     """Main execution function."""
     start_time = time.time()
@@ -497,36 +271,30 @@ def main():
         sys.stderr = original_stderr
         raise
 
-    is_iterative = opt_params.is_iterative_refinement()
-
-    if is_iterative:
-        n_iterations = opt_params.optimization_iterations
-        print_header(f"ITERATIVE REFINEMENT OPTIMIZATION ({n_iterations} ITERATIONS)")
-        print(f"Configuration file: {config_path}")
-        print(f"Run name: {config.run_name}")
-        print(f"Time span: {config.integration_params.t_start} to {config.integration_params.t_end} years")
-        print(f"Time step: {config.integration_params.dt} years")
-        print(f"\nIterative refinement mode:")
-        print(f"  Number of iterations: {n_iterations}")
-        print(f"  Initial f control points: {opt_params.n_points_initial_f}")
-        if opt_params.n_points_final_f is not None:
-            print(f"  Final f control points: {opt_params.n_points_final_f}")
+    n_iterations = opt_params.optimization_iterations
+    print_header(f"ITERATIVE REFINEMENT OPTIMIZATION ({n_iterations} ITERATIONS)")
+    print(f"Configuration file: {config_path}")
+    print(f"Run name: {config.run_name}")
+    print(f"Time span: {config.integration_params.t_start} to {config.integration_params.t_end} years")
+    print(f"Time step: {config.integration_params.dt} years")
+    print(f"\nIterative refinement mode:")
+    print(f"  Number of iterations: {n_iterations}")
+    print(f"  Initial f control points: {opt_params.n_points_initial_f}")
+    if opt_params.n_points_final_f is not None:
+        print(f"  Final f control points: {opt_params.n_points_final_f}")
+    else:
+        print(f"  Final f control points: {round(1 + (opt_params.n_points_initial_f - 1) * 2.0**(n_iterations - 1))}")
+    print(f"  Initial guess: f = {opt_params.initial_guess_f}")
+    if opt_params.initial_guess_s is not None:
+        print(f"  Initial guess: s = {opt_params.initial_guess_s}")
+        print(f"  Initial s control points: {opt_params.n_points_initial_s}")
+        if opt_params.n_points_final_s is not None:
+            print(f"  Final s control points: {opt_params.n_points_final_s}")
         else:
-            print(f"  Final f control points: {round(1 + (opt_params.n_points_initial_f - 1) * 2.0**(n_iterations - 1))}")
-        print(f"  Initial guess: f = {opt_params.initial_guess_f}")
-        if opt_params.initial_guess_s is not None:
-            print(f"  Initial guess: s = {opt_params.initial_guess_s}")
-            print(f"  Initial s control points: {opt_params.n_points_initial_s}")
-            if opt_params.n_points_final_s is not None:
-                print(f"  Final s control points: {opt_params.n_points_final_s}")
-            else:
-                print(f"  Final s control points: same as f")
-            print(f"  Optimizing both f and s: YES")
+            print(f"  Final s control points: same as f")
+        print(f"  Optimizing both f and s: YES")
 
     optimizer = UtilityOptimizer(config)
-
-    initial_guess = opt_params.initial_guess_f
-    sensitivity_results = None
 
     print_header("OPTIMIZATION")
 
@@ -567,29 +335,19 @@ def main():
     t_base = config.scalar_params.t_base
     print_optimization_results(opt_results, n_final_control_points, t_base)
 
-    comparison_results = None
-
     print_header("SAVING RESULTS")
 
     # Create control function from optimization results
-    # Check if we optimized both f and s
-    if 's_control_points' in opt_results and opt_results['s_control_points'] is not None:
+    if 's_control_points' in opt_results:
         # Both f and s were optimized
-        from src.optimization import create_f_and_s_control_function_from_points
         control_func = create_f_and_s_control_function_from_points(
             opt_results['control_points'],
             opt_results['s_control_points']
         )
     else:
-        # Only f was optimized, need to combine with s from config
+        # Only f was optimized; s follows its prescribed time function
         f_control = create_control_function_from_points(opt_results['control_points'])
-        if 's' in config.time_functions:
-            s_time_function = config.time_functions['s']
-        else:
-            # Use s from base control function
-            s_time_function = lambda t: config.control_function(t)[1]
-        from src.parameters import create_f_and_s_control_from_single
-        control_func = create_f_and_s_control_from_single(f_control, s_time_function)
+        control_func = create_f_and_s_control_from_single(f_control, config.time_functions['s'])
 
     optimal_config = ModelConfiguration(
         run_name=f"{config.run_name}_optimization",
@@ -597,7 +355,6 @@ def main():
         time_functions=config.time_functions,
         integration_params=config.integration_params,
         optimization_params=config.optimization_params,
-        initial_state=config.initial_state,
         control_function=control_func
     )
 
@@ -606,7 +363,6 @@ def main():
     optimal_results = create_derived_variables(optimal_results)
 
     print("\nSaving integration results (CSV and PDF)...")
-    plot_short_horizon = config.integration_params.plot_short_horizon
     # Pass the pre-created output_dir to save_results
     config_filename_base = os.path.basename(config_path)
     output_paths = save_results(optimal_results, optimal_config.run_name, prod_category, output_dir=output_dir, config_filename=config_filename_base)
@@ -625,18 +381,12 @@ def main():
     print(f"  Comprehensive PDF: {comprehensive_pdf}")
 
     print("\nWriting optimization summary CSV...")
-    opt_csv_path = write_optimization_summary(opt_results, sensitivity_results, output_dir, config.run_name, 'optimization_summary.csv', t_base)
+    opt_csv_path = write_optimization_summary(opt_results, output_dir, config.run_name, 'optimization_summary.csv', t_base)
     print(f"  Optimization CSV: {opt_csv_path}")
 
     print("\nCopying configuration file...")
     config_copy_path = copy_config_file(config_path, output_dir)
     print(f"  Configuration:    {config_copy_path}")
-
-    if comparison_results:
-        print("\nCreating comparison visualization plots...")
-        output_pdf = f'optimization_comparison_{config.run_name}.pdf'
-        create_visualization_plots(sensitivity_results, opt_results, comparison_results, config.run_name, output_pdf)
-        print(f"  Comparison PDF:   {output_pdf}")
 
     print_header("SUMMARY")
     print(f"Iterative refinement optimization complete:")

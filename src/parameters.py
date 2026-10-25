@@ -185,53 +185,6 @@ def create_gompertz_growth(initial_value, final_value, adjustment_coefficient):
 
 
 # =============================================================================
-# Control Function Factories
-# =============================================================================
-
-def constant_control(f_value):
-    """
-    Create a constant control function.
-
-    Parameters
-    ----------
-    f_value : float
-        Constant value for f (log10 of marginal abatement cost in $/tCO2)
-
-    Returns
-    -------
-    callable
-        Function f(t) = f_value
-    """
-    return lambda t: f_value
-
-
-def piecewise_constant_control(time_points, f_values):
-    """
-    Create a piecewise constant control function for optimization.
-
-    Parameters
-    ----------
-    time_points : array_like
-        Time boundaries for each constant segment
-    f_values : array_like
-        Control values for each segment
-
-    Returns
-    -------
-    callable
-        Function that returns appropriate f_value for time t
-
-    Notes
-    -----
-    This is the typical discretization for direct optimization methods.
-    The optimizer adjusts the f_values vector.
-    """
-    time_points = np.asarray(time_points)
-    f_values = np.asarray(f_values)
-    return lambda t: f_values[np.searchsorted(time_points[1:], t)]
-
-
-# =============================================================================
 # Control Functions for f and s (for simultaneous optimization of f and s)
 # =============================================================================
 
@@ -255,27 +208,6 @@ def create_f_and_s_control_from_single(f_control, s_time_function):
         Control function returning tuple (f, s)
     """
     return lambda t: (f_control(t), s_time_function(t))
-
-
-def create_f_and_s_control_from_specs(f_spec, s_spec):
-    """
-    Create a control function for both f and s from separate specifications for f and s.
-
-    Parameters
-    ----------
-    f_spec : dict
-        Control specification for f (same format as single control function)
-    s_spec : dict
-        Control specification for s (same format as time functions)
-
-    Returns
-    -------
-    callable
-        Control function returning tuple (f, s)
-    """
-    f_control = _create_time_function(f_spec) if isinstance(f_spec, dict) else f_spec
-    s_control = _create_time_function(s_spec) if isinstance(s_spec, dict) else s_spec
-    return lambda t: (f_control(t), s_control(t))
 
 
 # =============================================================================
@@ -586,29 +518,6 @@ class OptimizationParameters:
                 # Sort the list (user may have provided unsorted)
                 self.n_points_final_s = sorted(self.n_points_final_s)
 
-    def is_iterative_refinement(self):
-        """
-        Check if this configuration uses iterative refinement mode.
-
-        Returns
-        -------
-        bool
-            Always returns True (direct mode has been removed)
-        """
-        return isinstance(self.optimization_iterations, int)
-
-    def is_dual_optimization(self):
-        """
-        Check if this configuration optimizes both f and s.
-
-        Returns
-        -------
-        bool
-            True if optimizing both f and s (initial_guess_s is set),
-            False if only optimizing f (s is fixed from time_functions)
-        """
-        return self.initial_guess_s is not None
-
     def get_algorithm_for_iteration(self, iteration):
         """
         Get the algorithm to use for a specific iteration.
@@ -667,8 +576,6 @@ class ModelConfiguration:
         Integration control parameters
     optimization_params : OptimizationParameters
         Optimization control parameters
-    initial_state : dict or None
-        Initial conditions (computed automatically by integrate_model if None)
     control_function : callable
         Control function f(t) returning log10 of marginal abatement cost ($/tCO2)
     """
@@ -677,7 +584,6 @@ class ModelConfiguration:
     time_functions: dict
     integration_params: IntegrationParameters
     optimization_params: OptimizationParameters
-    initial_state: dict
     control_function: callable
 
 
@@ -839,64 +745,6 @@ def _create_time_function(func_spec):
         )
 
 
-def _create_control_function(control_spec):
-    """
-    Create a control function from JSON specification.
-
-    Parameters
-    ----------
-    control_spec : dict
-        Dictionary with 'type' key and type-specific parameters
-
-    Returns
-    -------
-    callable
-        Control function f(t)
-    """
-    control_type = control_spec['type']
-
-    if control_type == 'constant':
-        return constant_control(control_spec['value'])
-    elif control_type == 'piecewise_constant':
-        return piecewise_constant_control(
-            control_spec['time_points'],
-            control_spec['values']
-        )
-
-
-def calculate_initial_capital(s, A0, L0, delta, alpha):
-    """
-    Calculate steady-state initial capital stock.
-
-    Parameters
-    ----------
-    s : float
-        Savings rate
-    A0 : float
-        Total factor productivity at t=0
-    L0 : float
-        Population at t=0
-    delta : float
-        Capital depreciation rate (yr^-1)
-    alpha : float
-        Output elasticity of capital
-
-    Returns
-    -------
-    float
-        Initial capital stock at steady state with no climate damage or abatement
-
-    Notes
-    -----
-    At steady state with dK/dt = 0, no climate damage (Ω=0), and no abatement (Λ=0):
-        s · A · K^α · L^(1-α) = δ · K
-
-    Solving for K:
-        K = (s · A / δ)^(1/(1-α)) · L
-    """
-    return ((s * A0 / delta) ** (1 / (1 - alpha))) * L0
-
-
 def _filter_description_keys(d):
     """
     Remove keys starting with '_' from dictionary (used for descriptions/comments).
@@ -936,15 +784,13 @@ def load_configuration(config_path):
     - time_functions: dict with specs for A, L, sigma, theta1
     - integration_parameters: dict with t_start, t_end, dt, n_quad
     - optimization_parameters: dict with max_evaluations
-    - control_function: dict with type and parameters
 
-    Initial state is computed automatically by integrate_model():
-    - Ecum(0) = 0 (no cumulative emissions at start)
-    - K(0) = (s·A(0)/δ)^(1/(1-α))·L(0) (steady-state capital)
+    The initial state is taken from the scalar parameters: K(0) = K_initial,
+    Ecum(0) = Ecum_initial, H1-H3(0) = H1_initial-H3_initial.
 
     Keys starting with '_' are treated as comments/descriptions and ignored.
 
-    See config_baseline.json for an example.
+    See data/output/prod_s/9cases_s/*/9cases_s_gid-1.json for an example.
     """
     with open(config_path, 'r') as f:
         config_data = json.load(f)
@@ -968,15 +814,9 @@ def load_configuration(config_path):
     optimization_params_data = _filter_description_keys(config_data['optimization_parameters'])
     optimization_params = OptimizationParameters(**optimization_params_data)
 
-    # Create dual control function (f, s)
-    # For optimization, these will be created from optimization results
-    # For forward runs, these come from config
-    if 'control_function' in config_data:
-        control_function_data = _filter_description_keys(config_data['control_function'])
-        f_control = _create_control_function(control_function_data)
-    else:
-        # Use initial_guess_f as default constant control function
-        f_control = lambda t: optimization_params.initial_guess_f if isinstance(optimization_params.initial_guess_f, float) else optimization_params.initial_guess_f[0]
+    # Placeholder control function (f, s): f is the constant initial guess. Optimization and
+    # forward-integration scripts replace it with the trajectory they integrate.
+    f_control = lambda t: optimization_params.initial_guess_f if isinstance(optimization_params.initial_guess_f, float) else optimization_params.initial_guess_f[0]
 
     if 's' in time_functions:
         s_time_function = time_functions['s']
@@ -997,6 +837,5 @@ def load_configuration(config_path):
         time_functions=time_functions,
         integration_params=integration_params,
         optimization_params=optimization_params,
-        initial_state=None,
         control_function=control_function,
     )

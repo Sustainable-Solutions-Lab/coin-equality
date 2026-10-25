@@ -408,7 +408,6 @@ def main():
         time_functions=config.time_functions,
         integration_params=config.integration_params,
         optimization_params=config.optimization_params,
-        initial_state=config.initial_state,
         control_function=control_function
     )
 

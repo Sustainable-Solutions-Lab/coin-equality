@@ -72,7 +72,10 @@ O2_CALIBRATION_PERTURBATIONS = [1e-10, -1e-10]
 
 # Output keys deliberately removed during the refactor (baseline keys minus these must
 # equal the current keys). Updated in the commit that removes them.
-REMOVED_OUTPUT_KEYS = set()
+REMOVED_OUTPUT_KEYS = {
+    # Phase 1: vestigial welfare-adjusted MAC diagnostics (wMAC == MAC by construction)
+    'mu_dollar_numeraire', 'mu_dollar_cost', 'welfare_adjusted_mac', 'mac_over_wmac',
+}
 
 # Worst relative difference per case, collected by the tests and printed by conftest.py.
 DIFFERENCE_REPORT = []
@@ -167,7 +170,6 @@ def run_forward_results(case_name):
         time_functions=config.time_functions,
         integration_params=config.integration_params,
         optimization_params=config.optimization_params,
-        initial_state=config.initial_state,
         control_function=control_function,
     )
     return create_derived_variables(integrate_model(forward_config))
@@ -253,7 +255,6 @@ def run_optimization_case(case_name, initial_guess_f_perturbation):
         time_functions=config.time_functions,
         integration_params=config.integration_params,
         optimization_params=config.optimization_params,
-        initial_state=config.initial_state,
         control_function=optimal_control_function(config, opt_results),
     )
     forward = create_derived_variables(integrate_model(optimal_config))

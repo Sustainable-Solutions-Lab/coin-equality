@@ -5,23 +5,17 @@ This module implements the Solow-Swann growth model with climate damage
 and emissions abatement costs.
 """
 
-import math
 import numpy as np
-import time
-from scipy.special import roots_legendre, lambertw
+from scipy.special import roots_legendre
 from src.distribution_utilities import (
     find_log_deltaU_equal_utility,
     compute_post_tax_income_equal_utility,
     _get_omega_at_F,
-    L_pareto,
     L_pareto_derivative,
-    L_empirical_lorenz,
     L_empirical_lorenz_derivative,
-    stepwise_interpolate,
-    stepwise_integrate
 )
 from src.parameters import evaluate_params_at_time
-from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, INVERSE_EPSILON, OMEGA_BASE_MAX
+from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, OMEGA_BASE_MAX
 
 
 def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
@@ -53,93 +47,6 @@ def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
     mu = min(mu_max, mu)
 
     return mu
-
-
-def gini_from_distribution(values_yi, Fi_edges, Fwi):
-    """
-    Calculate Gini coefficient from discretized distribution.
-
-    Parameters
-    ----------
-    values_yi : np.ndarray
-        Values at quadrature points (length N_QUAD)
-    Fi_edges : np.ndarray
-        Edges of bins in F space [0, 1] (length N_QUAD + 1)
-    Fwi : np.ndarray
-        Bin widths (length N_QUAD)
-
-    Returns
-    -------
-    float
-        Gini coefficient (0 = perfect equality, 1 = perfect inequality)
-
-    Notes
-    -----
-    Gini = 2 * integral from 0 to 1 of (F - L(F)) dF
-    where L(F) is the Lorenz curve (cumulative fraction of total quantity
-    held by bottom F fraction of population)
-    """
-    total = np.sum(Fwi * values_yi)
-
-    if np.abs(total) <= EPSILON:
-        return 0.0
-
-    # Calculate Lorenz curve at each edge
-    lorenz = np.zeros(len(Fi_edges))
-    cumulative = 0.0
-
-    for i in range(len(Fwi)):
-        cumulative += Fwi[i] * values_yi[i]
-        lorenz[i+1] = cumulative / total
-
-    # Calculate Gini coefficient using trapezoidal rule
-    # Gini = 2 * integral from 0 to 1 of (F - L(F)) dF
-    gini = 0.0
-    for i in range(len(Fi_edges) - 1):
-        dF = Fi_edges[i+1] - Fi_edges[i]
-        F_avg = (Fi_edges[i] + Fi_edges[i+1]) / 2.0
-        L_avg = (lorenz[i] + lorenz[i+1]) / 2.0
-        gini += (F_avg - L_avg) * dF
-
-    gini *= 2.0
-
-    return gini
-
-
-# Global timing statistics
-_timing_stats = {
-    'call_count': 0,
-    'total_time': 0.0,
-    'setup_time': 0.0,
-    'policy_calc_time': 0.0,
-    'find_deltaU_time': 0.0,
-    'segment2_time': 0.0,
-    'utility_time': 0.0,
-    'damage_agg_time': 0.0,
-    'climate_time': 0.0,
-    'finalize_time': 0.0,
-}
-
-def print_timing_stats():
-    """Print timing statistics for calculate_tendencies."""
-    stats = _timing_stats
-    if stats['call_count'] == 0:
-        return
-
-    print(f"\n{'='*80}")
-    print(f"TIMING STATISTICS (after {stats['call_count']} calls)")
-    print(f"{'='*80}")
-    print(f"Total time:          {stats['total_time']:8.2f} s  (100.0%)")
-    print(f"  Setup:             {stats['setup_time']:8.2f} s  ({100*stats['setup_time']/stats['total_time']:5.1f}%)")
-    print(f"  Policy calc:       {stats['policy_calc_time']:8.2f} s  ({100*stats['policy_calc_time']/stats['total_time']:5.1f}%)")
-    print(f"    find_deltaU:     {stats['find_deltaU_time']:8.2f} s  ({100*stats['find_deltaU_time']/stats['total_time']:5.1f}%)")
-    print(f"  Segment 2:         {stats['segment2_time']:8.2f} s  ({100*stats['segment2_time']/stats['total_time']:5.1f}%)")
-    print(f"  Utility calc:      {stats['utility_time']:8.2f} s  ({100*stats['utility_time']/stats['total_time']:5.1f}%)")
-    print(f"  Damage agg:        {stats['damage_agg_time']:8.2f} s  ({100*stats['damage_agg_time']/stats['total_time']:5.1f}%)")
-    print(f"  Climate:           {stats['climate_time']:8.2f} s  ({100*stats['climate_time']/stats['total_time']:5.1f}%)")
-    print(f"  Finalize:          {stats['finalize_time']:8.2f} s  ({100*stats['finalize_time']/stats['total_time']:5.1f}%)")
-    print(f"Avg time per call:   {stats['total_time']/stats['call_count']*1000:8.3f} ms")
-    print(f"{'='*80}\n")
 
 
 def calculate_tendencies(state, params,
@@ -223,8 +130,6 @@ def calculate_tendencies(state, params,
     16. E from σ, μ, Y_gross (Eq 2.3)
     17. dK/dt from s, Y_net, δ, K (Eq 1.10)
     """
-    t_start = time.time()
-    _timing_stats['call_count'] += 1
 
     # Extract state variables
     K = state['K']
@@ -235,7 +140,6 @@ def calculate_tendencies(state, params,
     delta = params['delta']
     s = params['s']
     eta = params['eta']
-    rho = params['rho']
     t = params['t']
     A = params['A'] # total factor productivity
     L = params['L'] # population
@@ -271,12 +175,8 @@ def calculate_tendencies(state, params,
     income_dependent_aggregate_damage = params['income_dependent_aggregate_damage']
     tax_equity = params['tax_equity']
 
-
-
     # Transform xi into F space. Map [-1,1] to [0,1]
     Fi = (xi + 1.0)/2.0
-    # compute edges in F space
-    Fi_edges = (xi_edges + 1.0)/2.0
     # Transform quadrature weights to F space [0,1] (wi is for xi space [-1,1])
     Fwi = wi / 2.0
 
@@ -318,9 +218,6 @@ def calculate_tendencies(state, params,
     # y_damaged_calc: gross production net of climate damage (using previous timestep's damage)
     y_damaged_calc = y_gross * (1.0 - Omega_calc)
     climate_damage_calc = Omega_calc * y_gross
-
-    t_setup = time.time()
-    _timing_stats['setup_time'] += t_setup - t_start
 
     # -----------------------------------------------------------------------------------------
     #  Do redistribution, taxes, utility, etcc
@@ -409,7 +306,6 @@ def calculate_tendencies(state, params,
         tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
         log_deltaU_norm = LOG_DELTAU_NO_TAX
         if tax_amount > EPSILON:
-            t_before_find_deltaU = time.time()
             log_deltaU_norm = find_log_deltaU_equal_utility(
                 y_gross, gini, Omega_calc,
                 omega_yi_calc, xi_edges,
@@ -417,14 +313,10 @@ def calculate_tendencies(state, params,
                 tol=params['loose_epsilon'],
                 xi=xi, wi=wi,
             )
-            _timing_stats['find_deltaU_time'] += time.time() - t_before_find_deltaU
-
-        _timing_stats['policy_calc_time'] += time.time() - t_setup
 
         # ============================================================================
         # Income distribution and utility via Gauss-Legendre quadrature on [0, 1]
         # ============================================================================
-        t_before_seg2 = time.time()
         if use_empirical_lorenz:
             dLdF_Fi = L_empirical_lorenz_derivative(Fi, gini)
         else:
@@ -474,14 +366,11 @@ def calculate_tendencies(state, params,
 
         aggregate_utility = np.sum(Fwi * utility_yi)
 
-        _timing_stats['segment2_time'] += time.time() - t_before_seg2
-
         # ============================================================================
         # Aggregate damage
         # When income_dependent_aggregate_damage=False, rescale the per-quantile damage array
         # so the aggregate damage fraction matches Omega_base.
         # ============================================================================
-        t_before_damage_agg = time.time()
         total_income = np.sum(Fwi * y_net_yi)
         total_damage = np.sum(Fwi * y_net_yi * omega_yi)
 
@@ -493,12 +382,9 @@ def calculate_tendencies(state, params,
 
         Omega = total_damage / total_income if total_income > EPSILON else 0.0
 
-        _timing_stats['damage_agg_time'] += time.time() - t_before_damage_agg
-
     #========================================================================================
     # Emissions and remaining calculations
     # (mu, abateCost_amount, epot already computed at beginning of "Economy exists" section)
-        t_before_climate = time.time()
 
         # Eq 2.3: CO2eq emissions per capita (after abatement) consider non-CO2 gases and land C emissions
         e = (1 - mu) * epot
@@ -517,12 +403,9 @@ def calculate_tendencies(state, params,
         # aggregate utility
         U = aggregate_utility * L
 
-        _timing_stats['climate_time'] += time.time() - t_before_climate
-
     #========================================================================================
 
     # Prepare output
-    t_before_finalize = time.time()
     results = {}
 
     if store_detailed_output:
@@ -582,14 +465,6 @@ def calculate_tendencies(state, params,
     else:
         results['omega_yi_Omega_base_ratio'] = np.zeros(len(xi))
         results['Omega_Omega_base_ratio'] = 0.0
-
-    t_end = time.time()
-    _timing_stats['total_time'] += t_end - t_start
-    _timing_stats['finalize_time'] += t_end - t_before_finalize
-
-    # Print timing stats every 1000000 calls
-    if _timing_stats['call_count'] % 1000000 == 0:
-        print_timing_stats()
 
     return results
 
@@ -822,9 +697,6 @@ def integrate_model(config, store_detailed_output=True):
             omega_yi_Omega_base_ratio_prev = outputs['omega_yi_Omega_base_ratio']
             Omega_Omega_base_ratio_prev = outputs['Omega_Omega_base_ratio']
 
-    # Print final timing statistics only when called directly (not during optimization)
-    # print_timing_stats()
-
     return results
 
 
@@ -868,7 +740,6 @@ def create_derived_variables(results):
     theta1_array = np.array([p['theta1'] for p in params_list])
     theta2_array = np.array([p['theta2'] for p in params_list])
     eta_array = np.array([p['eta'] for p in params_list])
-    gini_array = np.array([p['gini'] for p in params_list])
     rho = params_list[0]['rho']
 
     # Extract primary arrays
@@ -899,24 +770,9 @@ def create_derived_variables(results):
     # Compute marginal abatement cost using standard DICE formula
     marginal_abatement_cost = theta1_array * (mu ** (theta2_array - 1.0))
 
-    # ---------- Welfare-adjusted MAC (wMAC) for SCC consistency ----------
-    # SCC "$ pulse" in calculate_tendencies scales everyone's consumption by the same factor,
-    # which corresponds to a consumption-proportional dollar numeraire. Under the single
-    # continuous tax policy, abatement-cost incidence matches that numeraire (tax spread
-    # across all incomes via the K formula), so wMAC == MAC and the ratio is 1.
-    wi = results['wi']
-    y_net_yi = results['y_net_yi']
-
-    Fwi = wi / 2.0  # Gauss-Legendre weights remapped from [-1,1] to [0,1]
-    c_yi = np.maximum((1.0 - s_array)[:, None] * y_net_yi, EPSILON)  # shape (n_steps, n_quad)
-
-    C = np.maximum(np.sum(Fwi[None, :] * c_yi, axis=1), EPSILON)
-    N = np.sum(Fwi[None, :] * (c_yi ** (1.0 - eta_array[:, None])), axis=1)
-    mu_dollar_numeraire = N / C
-    mu_dollar_cost = mu_dollar_numeraire
-    welfare_adjusted_mac = marginal_abatement_cost.copy()
-    mac_over_wmac = np.ones_like(marginal_abatement_cost)
-    # --------------------------------------------------------------------
+    # Per-quantile consumption on the [0, 1] quadrature grid (used for the discount rate below)
+    Fwi = results['wi'] / 2.0  # Gauss-Legendre weights remapped from [-1,1] to [0,1]
+    c_yi = np.maximum((1.0 - s_array)[:, None] * results['y_net_yi'], EPSILON)  # shape (n_steps, n_quad)
 
     # Create aliases
     Lambda = lambda_abate
@@ -964,10 +820,6 @@ def create_derived_variables(results):
         'Savings': Savings,
         'savings': savings,
         'marginal_abatement_cost': marginal_abatement_cost,
-        'mu_dollar_numeraire': mu_dollar_numeraire,
-        'mu_dollar_cost': mu_dollar_cost,
-        'welfare_adjusted_mac': welfare_adjusted_mac,
-        'mac_over_wmac': mac_over_wmac,
         'Lambda': Lambda,
         'dEcum_dt': dEcum_dt,
         'r_consumption': r_consumption,
