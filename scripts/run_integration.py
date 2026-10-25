@@ -231,7 +231,7 @@ def create_control_function_from_csv(t_values, f_values, s_values, bounds_f, bou
     Parameters
     ----------
     t_values : array
-        Time points
+        Time points relative to t_base (control functions receive t - t_base)
     f_values : array
         Control variable f values (log10(MAC) for MAC-based optimization)
     s_values : array
@@ -398,7 +398,9 @@ def main():
         print(f'\nCreating control function using PCHIP interpolation...')
         print(f'  bounds_f: {bounds_f}')
         print(f'  bounds_s: {bounds_s}')
-        control_function = create_control_function_from_csv(t_csv, f_csv, s_csv, bounds_f, bounds_s)
+        # The CSV holds calendar years; control functions are evaluated at t - t_base
+        control_function = create_control_function_from_csv(t_csv - config.scalar_params.t_base, f_csv, s_csv,
+                                                             bounds_f, bounds_s)
 
     # Create new configuration with loaded controls
     run_suffix = "_const" if is_json_file else "_forward"

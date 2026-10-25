@@ -10,12 +10,16 @@ is visible even while every test passes.
 """
 
 import json
+import os
+import subprocess
+import sys
 
 import numpy as np
 import pytest
 
 from src.parameters import load_configuration
 from tests.regression_cases import (
+    REPO_ROOT,
     BASELINE_DIR,
     CASES_DIR,
     NINE_CASES_DIR,
@@ -34,6 +38,7 @@ from tests.regression_cases import (
     run_optimization_case,
     run_kernels,
     published_results,
+    read_results_csv,
     results_csv_header,
 )
 
@@ -117,3 +122,36 @@ def test_all_configs_load():
     assert len(config_paths) == 14801 + 9 + 9
     for config_path in config_paths:
         load_configuration(str(config_path))
+
+
+def test_scripts_end_to_end(tmp_path):
+    """
+    run_optimization.py with a tiny budget, then run_integration.py on its output directory.
+
+    Both scripts write under data/output/ relative to the working directory, so they run in
+    tmp_path. The forward integration rebuilds the controls from the results CSV and must
+    reproduce that CSV.
+    """
+    environment = {**os.environ, 'MPLBACKEND': 'Agg'}
+    subprocess.run([sys.executable, str(REPO_ROOT / 'scripts' / 'run_optimization.py'),
+                    str(OPTIMIZATION_CASES['O1']['config_path']), 'smoke',
+                    '--optimization_parameters.max_evaluations_initial', '20',
+                    '--optimization_parameters.max_evaluations_final', '20'],
+                   cwd=tmp_path, env=environment, check=True, capture_output=True)
+    (optimization_dir,) = (tmp_path / 'data' / 'output' / 'prod' / 'smoke').iterdir()
+    for pattern in ['*_results.csv', '*_distributions.xlsx', '*_optimization_summary.csv', '*.json',
+                    '*_plots.pdf', '*_plots_2025-2100.pdf', 'plots_full.pdf', 'terminal_output.txt']:
+        assert len(list(optimization_dir.glob(pattern))) == 1, pattern
+
+    subprocess.run([sys.executable, str(REPO_ROOT / 'scripts' / 'run_integration.py'), str(optimization_dir)],
+                   cwd=tmp_path, env=environment, check=True, capture_output=True)
+    (integration_dir,) = (tmp_path / 'data' / 'output' / 'prod' / 'integration').iterdir()
+
+    optimized = read_results_csv(next(optimization_dir.glob('*_results.csv')))
+    replayed = read_results_csv(next(integration_dir.glob('*_results.csv')))
+    assert list(replayed.columns) == list(optimized.columns)
+    columns = list(optimized.columns)
+    assert_matches('scripts end-to-end',
+                   {col: replayed[col].values for col in columns},
+                   {col: optimized[col].values for col in columns},
+                   {col: RTOL_ROUNDOFF for col in columns})
