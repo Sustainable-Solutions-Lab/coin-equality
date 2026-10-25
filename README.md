@@ -369,6 +369,7 @@ Tolerances are relative to each variable's magnitude: 1e-12 without iterative so
 ```
 coin-equality/
 ├── README.md                          # This file
+├── REFACTOR.md                        # The 2026 cleanup: what changed and how results were verified
 ├── LICENSE                            # MIT (code); data files CC-BY-4.0
 ├── requirements.txt                   # Python dependencies
 ├── src/                               # Core library modules
