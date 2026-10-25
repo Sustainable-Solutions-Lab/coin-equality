@@ -177,7 +177,8 @@ def optimization_summary_layout(summary_path):
 
 
 def results_csv_header(results, output_dir):
-    csv_path = write_results_csv(results, str(output_dir), 'header_check')
+    csv_path = Path(output_dir) / 'header_check_results.csv'
+    write_results_csv(results, csv_path)
     with open(csv_path) as f:
         return pd.read_csv(f, nrows=0).columns.tolist()
 

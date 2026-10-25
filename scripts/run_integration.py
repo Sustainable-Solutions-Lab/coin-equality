@@ -39,7 +39,7 @@ from src.config_cli import parse_override_arguments, load_config_dict_with_overr
 from src.parameters import configuration_from_dict
 from src.economic_model import integrate_model, create_derived_variables, time_grid
 from src.optimization import control_arrays
-from src.output import save_results
+from src.output import save_results, create_output_directory
 from scipy.interpolate import PchipInterpolator
 
 
@@ -289,13 +289,11 @@ def main():
     print(f'\n' + '=' * 80)
     print(f'Saving Results')
     print(f'=' * 80)
-    config_filename_base = os.path.basename(config_path)
-    output_paths = save_results(results, run_name, 'integration',
-                                config_filename=config_filename_base)
-    print(f'Output directory: {output_paths["output_dir"]}')
-    print(f'CSV file:         {output_paths["csv_file"]}')
-    print(f'PDF file:         {output_paths["pdf_file"]}')
-    print(f'2025-2100 PDF:    {output_paths["pdf_file_2025_2100"]}')
+    output_dir = create_output_directory(run_name, 'integration')
+    output_paths = save_results(results, run_name, output_dir, os.path.basename(config_path))
+    print(f'Output directory: {output_dir}')
+    for path in output_paths.values():
+        print(f'  {path}')
 
     print(f'\n' + '=' * 80)
     print(f'Forward Integration Complete')

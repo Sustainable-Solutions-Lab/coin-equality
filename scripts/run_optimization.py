@@ -16,7 +16,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
 import argparse
-import pandas as pd
 from pathlib import Path
 from io import StringIO
 from src.config_cli import parse_override_arguments, load_config_dict_with_overrides
@@ -24,7 +23,6 @@ from src.parameters import configuration_from_dict
 from src.optimization import optimize, control_arrays
 from src.economic_model import integrate_model, create_derived_variables
 from src.output import save_results, write_optimization_summary, write_config_file, create_output_directory
-from src.visualization_utils import create_results_report_pdf
 
 
 class TeeOutput:
@@ -178,29 +176,16 @@ def main():
     f_values, s_values = control_arrays(config, opt_results['controls'])
     optimal_results = create_derived_variables(integrate_model(config, f_values, s_values, True), config.scalar_params)
 
-    print("\nSaving integration results (CSV and PDF)...")
-    config_filename_base = os.path.basename(config_path)
-    output_paths = save_results(optimal_results, f"{config.run_name}_optimization", prod_category,
-                                output_dir=output_dir, config_filename=config_filename_base)
-    print(f"  Output directory: {output_paths['output_dir']}")
-    print(f"  Results CSV:      {output_paths['csv_file']}")
-    print(f"  Results PDF:      {output_paths['pdf_file']}")
-    print(f"  2025-2100 PDF:    {output_paths['pdf_file_2025_2100']}")
-
-    # Create comprehensive results visualization using unified plotting
-    print("\nCreating comprehensive results visualization...")
-    results_df = pd.read_csv(output_paths['csv_file'])
-    comprehensive_pdf = Path(output_dir) / 'plots_full.pdf'
-    create_results_report_pdf({config.run_name: results_df}, comprehensive_pdf, config_filename=config_filename_base)
-    print(f"  Comprehensive PDF: {comprehensive_pdf}")
-
-    print("\nWriting optimization summary CSV...")
-    opt_csv_path = write_optimization_summary(opt_results, output_dir, config.run_name, 'optimization_summary.csv', t_base)
-    print(f"  Optimization CSV: {opt_csv_path}")
-
-    print("\nWriting configuration file (with any command line overrides)...")
-    config_copy_path = write_config_file(config_dict, config_filename_base, output_dir)
-    print(f"  Configuration:    {config_copy_path}")
+    print("\nSaving results (CSV, distributions, PDF reports)...")
+    config_filename = os.path.basename(config_path)
+    output_paths = save_results(optimal_results, f"{config.run_name}_optimization", output_dir, config_filename)
+    output_paths['summary_file'] = os.path.join(output_dir, f"{config.run_name}_optimization_summary.csv")
+    write_optimization_summary(opt_results, output_paths['summary_file'], t_base)
+    # The configuration actually run, including command line overrides
+    output_paths['config_file'] = os.path.join(output_dir, config_filename)
+    write_config_file(config_dict, output_paths['config_file'])
+    for path in output_paths.values():
+        print(f"  {path}")
 
     print_header("SUMMARY")
     print(f"Iterative refinement optimization complete:")
