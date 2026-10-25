@@ -1,20 +1,21 @@
 """
-Functions for calculating economic production, climate impacts, and system tendencies.
+Economic production, climate impacts, income distribution and system tendencies.
 
-This module implements the Solow-Swann growth model with climate damage
-and emissions abatement costs.
+The model is a Solow-Swan growth model with climate damage and emissions abatement,
+an income distribution over population rank (Gauss-Legendre quadrature), progressive
+taxation that pays for abatement, and an impulse-response temperature model. It is
+integrated forward with Euler steps.
 """
 
 import numpy as np
-from scipy.special import roots_legendre
 from src.distribution_utilities import (
+    quadrature_grid,
     find_log_deltaU_equal_utility,
     compute_post_tax_income_equal_utility,
-    _get_omega_at_F,
     L_pareto_derivative,
     L_empirical_lorenz_derivative,
 )
-from src.parameters import evaluate_params_at_time
+from src.parameters import evaluate_time_functions
 from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, OMEGA_BASE_MAX
 
 
@@ -49,119 +50,88 @@ def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
     return mu
 
 
-def calculate_tendencies(state, params,
-                        omega_yi_Omega_base_ratio_prev,
-                        Omega_Omega_base_ratio_prev,
-                        xi, xi_edges, wi, store_detailed_output):
+def calculate_tendencies(state, sp, inputs, omega_yi_Omega_base_ratio_prev, Omega_Omega_base_ratio_prev,
+                         grid, dt, store_detailed_output):
     """
-    Calculate time derivatives and all derived variables.
+    Calculate the time derivatives of the state and, optionally, all diagnostics at one time step.
 
     Parameters
     ----------
     state : dict
-        State variables:
-        - 'K': Capital stock ($)
-        - 'Ecum': Cumulative CO2 emissions (tCO2)
-        - 'H1', 'H2', 'H3': Heat-uptake mode variables (°C)
-    params : dict
-        Model parameters (all must be provided):
-        - 'alpha': Output elasticity of capital
-        - 'delta': Capital depreciation rate (yr^-1)
-        - 's': Savings rate
-        - 'psi1': Linear climate damage coefficient (°C⁻¹) [Barrage & Nordhaus 2023]
-        - 'psi2': Quadratic climate damage coefficient (°C⁻²) [Barrage & Nordhaus 2023]
-        - 'y_damage_distribution_exponent': Exponent for income-dependent damage distribution
-        - 'y_net_reference': Reference income for power-law damage scaling ($/person)
-        - 'impulse_response_a1/a2/a3': Impulse response coefficients (°C/tCO₂)
-        - 'impulse_response_tau1/tau2/tau3': Impulse response time constants (years)
-        - 'eta': Coefficient of relative risk aversion
-        - 'A': Total factor productivity (current)
-        - 'L': Population (current)
-        - 'sigma': Carbon intensity of GDP (current, tCO2 $^-1)
-        - 'theta1': Abatement cost coefficient (current, $ tCO2^-1)
-        - 'theta2': Abatement cost exponent
-        - 'mu_max': Maximum allowed abatement fraction (cap on μ)
-        - 'gini': Background Gini index (current, from time function)
-        - 'Gini_fract': Fraction of Gini change as instantaneous step
-        - 'Gini_restore': Rate of restoration to gini (yr^-1)
-        - 'f': log10 of marginal abatement cost ($/tCO2)
+        'K' capital stock ($), 'Ecum' cumulative CO2 emissions (tCO2), 'H1', 'H2', 'H3'
+        heat-uptake mode temperatures (°C)
+    sp : ScalarParameters
+        Time-invariant parameters
+    inputs : dict
+        Values at this step: 't' (calendar year), the exogenous time functions 'A', 'L',
+        'sigma', 'theta1', 'gini', 'emission_ratio', 'Eland', and the controls
+        'f' = log10(marginal abatement cost in $/tCO2) and 's' (savings rate)
     omega_yi_Omega_base_ratio_prev : np.ndarray
-        Per-quantile ratio of climate damage to base damage from previous timestep
-        (length N_QUAD, on the Gauss-Legendre grid over [0, 1]). Multiply by current
-        Omega_base to get current damage fractions.
+        Per-quantile damage fraction divided by Omega_base, from the previous step
     Omega_Omega_base_ratio_prev : float
-        Ratio of aggregate damage to base damage from previous timestep.
-        Multiply by current Omega_base to get current aggregate damage fraction.
-    xi : np.ndarray
-        Gauss-Legendre quadrature nodes on [-1, 1] (length N_QUAD)
-    xi_edges : np.ndarray
-        Edges of quadrature intervals on [-1, 1] (length N_QUAD + 1)
-    wi : np.ndarray
-        Gauss-Legendre quadrature weights (length N_QUAD)
-    store_detailed_output : bool, optional
-        Whether to compute and return all intermediate variables. Default: True
+        Aggregate damage fraction divided by Omega_base, from the previous step
+    grid : QuadratureGrid
+        Quadrature over population rank
+    dt : float
+        Time step (yr), used to spread emission and consumption pulses over the step
+    store_detailed_output : bool
+        Whether to return the diagnostics
 
     Returns
     -------
-    dict
-        Dictionary containing:
-        - Tendencies: 'dK_dt', 'dEcum_dt', 'dH1_dt', 'dH2_dt', 'dH3_dt'
-        - Climate damage ratios for next timestep: 'omega_yi_Omega_base_ratio', 'Omega_Omega_base_ratio'
-        - All intermediate variables: Y_gross, delta_T, Omega, Y_net, y_net, redistribution,
-          mu, Lambda, AbateCost, U, E
+    tendencies : dict
+        'U' (aggregate utility), 'dK_dt', 'dEcum_dt', 'dH1_dt', 'dH2_dt', 'dH3_dt', and the
+        damage ratios for the next step 'omega_yi_Omega_base_ratio', 'Omega_Omega_base_ratio'
+    diagnostics : dict or None
+        Per-step output variables (scalars and per-quantile arrays) when
+        store_detailed_output, else None
 
     Notes
     -----
-    Calculation order follows equations 1.1-1.10, 2.1-2.2, 3.5, 4.3-4.4:
-    1. Y_gross from K, L, A, α (Eq 1.1)
-    2. ΔT from Ecum, H1, H2, H3 via impulse response (Eq 2.2)
-    3. y_gross from Y_gross, L (mean per-capita gross income)
-    4. Ω, G_climate from ΔT, Gini, y_gross, damage params (income-dependent damage)
-    5. Y_damaged from Y_gross, Ω (Eq 1.3)
-    6. y from Y_damaged, L, s (Eq 1.4)
-    7. Δc from y, ΔL (Eq 4.3)
-    8. E_pot from σ, Y_gross (Eq 2.1)
-    9. AbateCost from f, Δc, L (Eq 1.5)
-    10. μ from AbateCost, θ₁, θ₂, E_pot (Eq 1.6)
-    11. Λ from AbateCost, Y_damaged (Eq 1.7)
-    12. Y_net from Y_damaged, Λ (Eq 1.8)
-    13. y_net from y, AbateCost, L (Eq 1.9)
-    14. U from y_net, Gini, η (Eq 3.5)
-    16. E from σ, μ, Y_gross (Eq 2.3)
-    17. dK/dt from s, Y_net, δ, K (Eq 1.10)
+    Climate damage is lagged one step: the damage fractions used for this step's budget are
+    the previous step's damage-to-Omega_base ratios times this step's Omega_base. The steps:
+    1. ΔT from cumulative emissions and heat-uptake modes (impulse response); Omega_base(ΔT)
+    2. y_gross = A (K/L)^α; y_damaged from the lagged aggregate damage
+    3. μ from the marginal abatement cost 10^f; abatement cost, capped below y_damaged
+    4. Pre-tax income per quantile from the Lorenz curve and lagged per-quantile damage;
+       the equal-utility-loss tax raises the abatement cost (less any consumption pulse)
+    5. Utility per quantile (CRRA in consumption (1 - s) y_net) and its population mean
+    6. Damage per quantile for the next step (power law in income, rescaled to Omega_base
+       unless income_dependent_aggregate_damage)
+    7. Emissions e = (1 - μ) e_pot (+ pulse), dK/dt = s y_net L - δ K, heat-uptake tendencies
     """
-
     # Extract state variables
     K = state['K']
     Ecum = state['Ecum']
+    H1 = state['H1']
+    H2 = state['H2']
+    H3 = state['H3']
+
+    # Extract inputs at this step
+    t = inputs['t']
+    A = inputs['A']  # total factor productivity
+    L = inputs['L']  # population
+    sigma = inputs['sigma']
+    theta1 = inputs['theta1']
+    gini = inputs['gini']
+    emission_ratio = inputs['emission_ratio']
+    Eland = inputs['Eland']
+    log10_mac = inputs['f']
+    s = inputs['s']
 
     # Extract parameters
-    alpha = params['alpha']
-    delta = params['delta']
-    s = params['s']
-    eta = params['eta']
-    t = params['t']
-    A = params['A'] # total factor productivity
-    L = params['L'] # population
-    sigma = params['sigma']
-    theta1 = params['theta1']
-    theta2 = params['theta2']
-    mu_max = params['mu_max']
-    gini = params['gini']
-    use_empirical_lorenz = params['use_empirical_lorenz']
-    # f is now log10 of marginal abatement cost
-    log10_mac = params['f']
-    y_damage_distribution_exponent = params['y_damage_distribution_exponent']
-    y_net_reference = params['y_net_reference']
-    psi1 = params['psi1']
-    psi2 = params['psi2']
-    emission_ratio = params['emission_ratio']
-    year_extra_emission = params['year_extra_emission']
-    amount_extra_emission = params['amount_extra_emission']
-    year_extra_consumption = params['year_extra_consumption']
-    amount_extra_consumption = params['amount_extra_consumption']
-    Eland = params['Eland']
-    dt = params['dt']
+    alpha = sp.alpha
+    delta = sp.delta
+    eta = sp.eta
+    theta2 = sp.theta2
+    mu_max = sp.mu_max
+    use_empirical_lorenz = sp.use_empirical_lorenz
+    y_damage_distribution_exponent = sp.y_damage_distribution_exponent
+    y_net_reference = sp.y_net_reference
+    psi1 = sp.psi1
+    psi2 = sp.psi2
+    income_dependent_aggregate_damage = sp.income_dependent_aggregate_damage
+    tax_equity = sp.tax_equity
 
     # Validate Gini coefficient for empirical Lorenz
     if use_empirical_lorenz and gini > EMPIRICAL_LORENZ_BASE_GINI:
@@ -171,31 +141,15 @@ def calculate_tendencies(state, params,
             f"Either reduce Gini or set use_empirical_lorenz=false to use Pareto-Lorenz formulation."
         )
 
-    # Policy switch (only remaining one)
-    income_dependent_aggregate_damage = params['income_dependent_aggregate_damage']
-    tax_equity = params['tax_equity']
+    Fi = grid.Fi
+    Fwi = grid.Fwi
 
-    # Transform xi into F space. Map [-1,1] to [0,1]
-    Fi = (xi + 1.0)/2.0
-    # Transform quadrature weights to F space [0,1] (wi is for xi space [-1,1])
-    Fwi = wi / 2.0
-
-    #========================================================================================
-    # Simplified damage calculation using aggregate damage from previous timestep
-    # No iteration needed - uses temperature-based Omega_base with previous damage for budgeting
-
-    #========================================================================================
-    # Main calculations
-
-    # Eq 2.2: Temperature change via impulse response (Ricke & Caldeira 2014)
+    # Temperature change via impulse response (Ricke & Caldeira 2014)
     # ΔT = R_∞·Ecum + H1 + H2 + H3, where R_∞ = -(a1+a2+a3)
-    a1 = params['impulse_response_a1']
-    a2 = params['impulse_response_a2']
-    a3 = params['impulse_response_a3']
+    a1 = sp.impulse_response_a1
+    a2 = sp.impulse_response_a2
+    a3 = sp.impulse_response_a3
     R_inf = -(a1 + a2 + a3)
-    H1 = state['H1']
-    H2 = state['H2']
-    H3 = state['H3']
     delta_T = R_inf * Ecum + H1 + H2 + H3
 
     # Base damage from temperature (capped just below 1.0 to avoid division by zero)
@@ -207,21 +161,15 @@ def calculate_tendencies(state, params,
     Omega_calc = np.clip(Omega_Omega_base_ratio_prev * Omega_base, 0.0, 1.0 - EPSILON)
     omega_yi_calc = np.clip(omega_yi_Omega_base_ratio_prev * Omega_base, 0.0, 1.0 - EPSILON)
 
-    # Eq 1.1: Gross production per capita (Cobb-Douglas)
-    # y_gross: gross production before climate damage and abatement cost
+    # Gross production per capita (Cobb-Douglas), before climate damage and abatement cost
     if K > 0 and L > 0:
         y_gross = A * ((K / L) ** alpha)
     else:
         y_gross = 0.0
 
-    # Use Omega from previous timestep for budgeting and damage calculations
-    # y_damaged_calc: gross production net of climate damage (using previous timestep's damage)
+    # Gross production net of climate damage, using the previous step's damage for budgeting
     y_damaged_calc = y_gross * (1.0 - Omega_calc)
     climate_damage_calc = Omega_calc * y_gross
-
-    # -----------------------------------------------------------------------------------------
-    #  Do redistribution, taxes, utility, etcc
-    # -----------------------------------------------------------------------------------------
 
     if y_gross <= EPSILON or y_damaged_calc <= EPSILON:
         # Economy has collapsed - set all downstream variables to zero or appropriate values
@@ -235,101 +183,77 @@ def calculate_tendencies(state, params,
         mu = 0.0
         U = NEG_BIGNUM
         e = 0.0
-        eland = 0.0
         E_extra = 0.0
         consumption_extra = 0.0
         dK_dt = -delta * K
-        omega_yi = np.zeros_like(xi)
-        y_net_yi = np.zeros_like(xi)
-        utility_yi = np.zeros_like(xi)
-        average_tax_rate_yi = np.zeros_like(xi)
-        marginal_tax_rate_yi = np.zeros_like(xi)
+        omega_yi = np.zeros_like(Fi)
+        y_net_yi = np.zeros_like(Fi)
+        utility_yi = np.zeros_like(Fi)
+        average_tax_rate_yi = np.zeros_like(Fi)
+        marginal_tax_rate_yi = np.zeros_like(Fi)
     else:
-        # Economy exists - proceed with calculations
-
-        # ============================================================================
-        # marginal_abatement_cost-based optimization: compute mu and abateCost_amount from log10(marginal_abatement_cost)
-        # This must happen BEFORE income distribution calculations that depend on
-        # abateCost_amount (tax_amount, find_log_deltaU_equal_utility)
-        # ============================================================================
+        # Abatement: mu and its cost follow from the marginal abatement cost, and must be
+        # known before the income distribution, which pays for them through the tax.
 
         # Land emissions per capita (Eland is total land emissions from time function)
         eland = Eland / L
 
-        # Eq 2.1: Potential emissions per capita (unabated), including land emissions
+        # Potential emissions per capita (unabated), including land emissions
         epot = sigma * y_gross * emission_ratio + eland
 
-        # Convert log10(marginal_abatement_cost) to linear marginal_abatement_cost
         marginal_abatement_cost = 10.0 ** log10_mac
 
         if epot > EPSILON and marginal_abatement_cost > EPSILON:
-            # Invert marginal_abatement_cost to get mu using standard DICE formula
             mu = invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max)
 
-            # Compute abatement cost from mu using standard DICE formula
+            # Abatement cost from mu using standard DICE formula
             abateCost_amount = (theta1 / theta2) * epot * (mu ** theta2)
 
             # Cap abatement cost to ensure lambda_abate < 1.0 and y_net > 0.
-            # With MAC-based optimization, the optimizer controls marginal cost, not total cost.
-            # High MAC values can produce abatement costs exceeding available income.
+            # The optimizer controls marginal cost, not total cost, and high marginal
+            # costs can produce abatement costs exceeding available income.
             abateCost_amount = min(abateCost_amount, (1.0 - EPSILON) * y_damaged_calc)
         else:
             mu = 0.0
             abateCost_amount = 0.0
 
-        # Compute lambda_abate from the derived abateCost_amount
         lambda_abate = abateCost_amount / y_damaged_calc if y_damaged_calc > EPSILON else 0.0
 
-        # Eq 1.8 & 1.9: Net production per capita after abatement cost and climate damage
-        # y_net (aggregate): gross production net of climate damage and abatement cost
-        # Note: consumption + savings = y_net
+        # Net production per capita after abatement cost and climate damage
+        # (consumption + savings = y_net)
         y_net = (1.0 - lambda_abate) * y_damaged_calc
 
-        # ============================================================================
         # Extra consumption pulse (for SCC calculation)
-        # ============================================================================
-        if year_extra_consumption >= t and year_extra_consumption < t + dt:
-            consumption_extra = amount_extra_consumption / (L * dt)
+        if pulse_in_step(sp.year_extra_consumption, t, dt):
+            consumption_extra = sp.amount_extra_consumption / (L * dt)
         else:
             consumption_extra = 0.0
 
         tax_amount = abateCost_amount - consumption_extra  # per capita
 
-        # ============================================================================
-        # Tax policy: continuous-knob equal-utility-loss formula
-        # eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1)
-        # At eta > 1:  tax_equity=0 -> flat rate, tax_equity=0.5 -> equal utility loss,
-        #              tax_equity->1 -> tax richest.
-        # At eta = 1 the knob is degenerate; the log-utility branch in find_K yields flat rate.
-        # Monotonicity dc/dF > 0 is guaranteed by the closed form, so no iteration needed.
-        # ============================================================================
-        tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
-        log_deltaU_norm = LOG_DELTAU_NO_TAX
-        if tax_amount > EPSILON:
-            log_deltaU_norm = find_log_deltaU_equal_utility(
-                y_gross, gini, Omega_calc,
-                omega_yi_calc, xi_edges,
-                tax_exponent, tax_amount, use_empirical_lorenz,
-                tol=params['loose_epsilon'],
-                xi=xi, wi=wi,
-            )
-
-        # ============================================================================
-        # Income distribution and utility via Gauss-Legendre quadrature on [0, 1]
-        # ============================================================================
+        # Pre-tax income per quantile from the Lorenz curve and the lagged per-quantile damage
+        # (the quadrature nodes lie inside their damage intervals, so the lagged damage at
+        # node i is omega_yi_calc[i])
         if use_empirical_lorenz:
             dLdF_Fi = L_empirical_lorenz_derivative(Fi, gini)
         else:
             dLdF_Fi = L_pareto_derivative(Fi, gini)
-
-        # Previous timestep's damage at each quadrature point (stepwise interpolation
-        # of omega_yi_calc over the full [0, 1] range).
-        omega_yi_prev = _get_omega_at_F(Fi, omega_yi_calc, xi_edges)
-
-        y_pretax_yi = y_gross * dLdF_Fi * (1.0 - omega_yi_prev)
-        # Evaluate the closed form in normalized units to avoid y^(1-eta) underflow at high
-        # eta_eff. y_damaged_calc is the same y_damaged_mean find_log_deltaU_equal_utility normalized by.
+        y_pretax_yi = y_gross * dLdF_Fi * (1.0 - omega_yi_calc)
+        # Work in units of mean damaged income to avoid y^(1-eta) underflow at high eta_eff
         y_pretax_yi_norm = y_pretax_yi / y_damaged_calc
+
+        # Tax policy: continuous-knob equal-utility-loss formula
+        # eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1)
+        # At eta > 1:  tax_equity=0 -> flat rate, tax_equity=0.5 -> equal utility loss,
+        #              tax_equity->1 -> tax richest.
+        # At eta = 1 the knob is degenerate: the log-utility branch yields a flat rate.
+        # Monotonicity dc/dF > 0 is guaranteed by the closed form, so no iteration needed.
+        tax_exponent = 1.0 + (tax_equity / (1.0 - tax_equity)) * (eta - 1.0)
+        log_deltaU_norm = LOG_DELTAU_NO_TAX
+        if tax_amount > EPSILON:
+            log_deltaU_norm = find_log_deltaU_equal_utility(
+                y_pretax_yi_norm, tax_amount / y_damaged_calc, tax_exponent, Fwi, sp.loose_epsilon)
+
         c_yi_norm = compute_post_tax_income_equal_utility(y_pretax_yi_norm, log_deltaU_norm, tax_exponent)
         y_net_yi = c_yi_norm * y_damaged_calc
 
@@ -353,7 +277,7 @@ def calculate_tendencies(state, params,
             utility_yi = (np.maximum(consumption_yi, EPSILON) ** (1 - eta)) / (1 - eta)
 
         # Damage for next timestep (income-dependent distribution).
-        # y_damage_distribution_exponent = 0 is the uniform vulnerability case: damage fraction Omega_base for all incomes (back-door escape).
+        # y_damage_distribution_exponent = 0 is the uniform vulnerability case: damage fraction Omega_base for all incomes.
         if np.abs(y_damage_distribution_exponent) < EPSILON:
             omega_yi = np.full_like(y_net_yi, Omega_base)
         else:
@@ -366,11 +290,8 @@ def calculate_tendencies(state, params,
 
         aggregate_utility = np.sum(Fwi * utility_yi)
 
-        # ============================================================================
-        # Aggregate damage
-        # When income_dependent_aggregate_damage=False, rescale the per-quantile damage array
-        # so the aggregate damage fraction matches Omega_base.
-        # ============================================================================
+        # Aggregate damage. When income_dependent_aggregate_damage=False, rescale the
+        # per-quantile damage array so the aggregate damage fraction matches Omega_base.
         total_income = np.sum(Fwi * y_net_yi)
         total_damage = np.sum(Fwi * y_net_yi * omega_yi)
 
@@ -382,91 +303,77 @@ def calculate_tendencies(state, params,
 
         Omega = total_damage / total_income if total_income > EPSILON else 0.0
 
-    #========================================================================================
-    # Emissions and remaining calculations
-    # (mu, abateCost_amount, epot already computed at beginning of "Economy exists" section)
-
-        # Eq 2.3: CO2eq emissions per capita (after abatement) consider non-CO2 gases and land C emissions
+        # CO2eq emissions per capita after abatement (non-CO2 gases and land emissions included)
         e = (1 - mu) * epot
 
         # Extra emission pulse (for sensitivity analysis)
-        if amount_extra_emission == 0.0:
+        if sp.amount_extra_emission == 0.0:
             E_extra = 0.0
-        elif year_extra_emission >= t and year_extra_emission < t + dt:
-            E_extra = amount_extra_emission / dt
+        elif pulse_in_step(sp.year_extra_emission, t, dt):
+            E_extra = sp.amount_extra_emission / dt
         else:
             E_extra = 0.0
 
-        # Eq 1.10: Capital tendency
+        # Capital tendency
         dK_dt = s * y_net * L - delta * K
 
-        # aggregate utility
+        # Aggregate (population-weighted) utility
         U = aggregate_utility * L
 
-    #========================================================================================
-
-    # Prepare output
-    results = {}
-
-    if store_detailed_output:
-        # Store primary per-capita variables
-        results.update({
-            'y_gross': y_gross,
-            'y_damaged': y_damaged_calc,
-            'climate_damage': climate_damage_calc,
-            'y_net': y_net,
-            'e': e,
-            'mu': mu,
-            'lambda_abate': lambda_abate,
-            'abateCost_amount': abateCost_amount,
-            'tax_amount': tax_amount,
-            'log_deltaU_norm': log_deltaU_norm,
-            'aggregate_utility': aggregate_utility,
-            'Gini': gini,
-            'gini': gini,
-            'delta_T': delta_T,
-            'Omega': Omega,
-            'Omega_base': Omega_base,
-            'Omega_calc': Omega_calc,
-            'y_net_yi': y_net_yi,
-            'omega_yi': omega_yi,
-            'utility_yi': utility_yi,
-            'average_tax_rate_yi': average_tax_rate_yi,
-            'marginal_tax_rate_yi': marginal_tax_rate_yi,
-            'max_average_tax_rate': float(np.max(average_tax_rate_yi)) if average_tax_rate_yi.size else 0.0,
-            'max_marginal_tax_rate': float(np.max(marginal_tax_rate_yi)) if marginal_tax_rate_yi.size else 0.0,
-            's': s,
-            'dK_dt': dK_dt,
-            'mu_max': mu_max,
-            'emission_ratio': emission_ratio,
-            'E_extra': E_extra,
-            'consumption_extra': consumption_extra,
-        })
-
-    # Always return minimal variables needed for optimization
     dEcum_dt = e * L + E_extra
-    results.update({
+    tendencies = {
         'U': U,
-        'mu': mu,
         'dK_dt': dK_dt,
         'dEcum_dt': dEcum_dt,
-    })
-
-    # Impulse response heat-uptake tendencies: dHi/dt = ai·E(t) - Hi/τi
-    results['dH1_dt'] = a1 * dEcum_dt - H1 / params['impulse_response_tau1']
-    results['dH2_dt'] = a2 * dEcum_dt - H2 / params['impulse_response_tau2']
-    results['dH3_dt'] = a3 * dEcum_dt - H3 / params['impulse_response_tau3']
-
-    # Always return climate damage ratio for use in next time step.
-    # Store per-quantile ratio so next timestep can scale by its own Omega_base.
+        # Impulse response heat-uptake tendencies: dHi/dt = ai·E(t) - Hi/τi
+        'dH1_dt': a1 * dEcum_dt - H1 / sp.impulse_response_tau1,
+        'dH2_dt': a2 * dEcum_dt - H2 / sp.impulse_response_tau2,
+        'dH3_dt': a3 * dEcum_dt - H3 / sp.impulse_response_tau3,
+    }
+    # Damage ratios for the next step, which scales them by its own Omega_base
     if Omega_base > EPSILON:
-        results['omega_yi_Omega_base_ratio'] = omega_yi / Omega_base
-        results['Omega_Omega_base_ratio'] = Omega / Omega_base
+        tendencies['omega_yi_Omega_base_ratio'] = omega_yi / Omega_base
+        tendencies['Omega_Omega_base_ratio'] = Omega / Omega_base
     else:
-        results['omega_yi_Omega_base_ratio'] = np.zeros(len(xi))
-        results['Omega_Omega_base_ratio'] = 0.0
+        tendencies['omega_yi_Omega_base_ratio'] = np.zeros(len(Fi))
+        tendencies['Omega_Omega_base_ratio'] = 0.0
 
-    return results
+    if not store_detailed_output:
+        return tendencies, None
+
+    diagnostics = {
+        'y_gross': y_gross,
+        'y_damaged': y_damaged_calc,
+        'climate_damage': climate_damage_calc,
+        'y_net': y_net,
+        'e': e,
+        'mu': mu,
+        'lambda_abate': lambda_abate,
+        'abateCost_amount': abateCost_amount,
+        'tax_amount': tax_amount,
+        'log_deltaU_norm': log_deltaU_norm,
+        'aggregate_utility': aggregate_utility,
+        'delta_T': delta_T,
+        'Omega': Omega,
+        'Omega_base': Omega_base,
+        'Omega_calc': Omega_calc,
+        'y_net_yi': y_net_yi,
+        'omega_yi': omega_yi,
+        'utility_yi': utility_yi,
+        'average_tax_rate_yi': average_tax_rate_yi,
+        'marginal_tax_rate_yi': marginal_tax_rate_yi,
+        'max_average_tax_rate': np.max(average_tax_rate_yi),
+        'max_marginal_tax_rate': np.max(marginal_tax_rate_yi),
+        'dK_dt': dK_dt,
+        'E_extra': E_extra,
+        'consumption_extra': consumption_extra,
+    }
+    return tendencies, diagnostics
+
+
+def pulse_in_step(year, t, dt):
+    """Whether a pulse dated `year` falls in the time step [t, t + dt)."""
+    return year >= t and year < t + dt
 
 
 def time_grid(integration_params):
@@ -475,7 +382,11 @@ def time_grid(integration_params):
                      integration_params.dt)
 
 
-def integrate_model(config, f_values, s_values, store_detailed_output=True):
+# Inputs stored in the detailed results (Eland is used but not reported)
+REPORTED_INPUTS = ['A', 'L', 'sigma', 'theta1', 'gini', 'emission_ratio', 'f', 's']
+
+
+def integrate_model(config, f_values, s_values, store_detailed_output):
     """
     Integrate the model forward in time using Euler's method.
 
@@ -487,308 +398,124 @@ def integrate_model(config, f_values, s_values, store_detailed_output=True):
         Control f = log10(marginal abatement cost) at each time of time_grid(config.integration_params)
     s_values : np.ndarray
         Savings rate at each time of time_grid(config.integration_params)
-    store_detailed_output : bool, optional
-        If True (default), stores all diagnostic variables for CSV/PDF output.
-        If False, stores only t, U needed for optimization objective calculation.
+    store_detailed_output : bool
+        If True, return all variables (for output files); if False, only what the
+        optimization objective needs.
 
     Returns
     -------
     dict
-        Time series results with keys:
-        - 't': array of time points
-        - 'U': array of utility values (always stored)
-        - 'L': array of population values (always stored, needed for objective function)
-
-        If store_detailed_output=True, also includes:
-        - 'K': array of capital stock values
-        - 'Ecum': array of cumulative emissions values
-        - 'Gini': array of Gini index values (from background)
-        - 'gini': array of background Gini index values
-        - 'A', 'sigma', 'theta1', 'f': time-dependent inputs
-        - All derived variables: Y_gross, delta_T, Omega, Y_damaged, Y_net,
-          redistribution, mu, Lambda, AbateCost, marginal_abatement_cost, y_net, E
+        Always 't' (calendar years) and 'U' (aggregate utility). With store_detailed_output,
+        also the state ('K', 'Ecum', 'H1', 'H2', 'H3'), the reported inputs
+        (REPORTED_INPUTS, plus 'Gini', the same as 'gini'), the per-step diagnostics of
+        calculate_tendencies (per-quantile ones as (n_steps, n_quad) arrays) and the
+        quadrature grid ('xi', 'wi', 'xi_edges', 'Fi', 'Fwi', 'Fi_edges').
 
     Notes
     -----
-    Uses simple Euler integration: state(t+dt) = state(t) + dt * tendency(t)
-    This ensures all functional relationships are satisfied exactly at output points.
-
-    Initial conditions are computed automatically:
-    - Ecum(0) = Ecum_initial (initial cumulative emissions from configuration)
-    - K(0) = K_initial (from configuration)
+    Euler integration, state(t+dt) = state(t) + dt * tendency(t), so all functional
+    relationships hold exactly at the output times. The initial state is K_initial,
+    Ecum_initial and H1_initial-H3_initial. Cumulative emissions are kept non-negative
+    (no cooling below the initial condition).
     """
+    sp = config.scalar_params
     dt = config.integration_params.dt
-    n_quad = config.integration_params.n_quad
-
+    grid = quadrature_grid(config.integration_params.n_quad)
     t_array = time_grid(config.integration_params)
-    n_steps = len(t_array)
 
-    # Precompute Gauss-Legendre quadrature nodes and weights (used for all timesteps)
-    xi, wi = roots_legendre(n_quad)
-    # Create xi_edges: cumulative weights starting at -1, ending at +1
-    # wi sums to 2 (integrating over [-1,1]), so cumsum(wi) goes from wi[0] to 2
-    # We want edges from -1 to +1, so: -1 + cumsum(wi) goes from -1+wi[0] to 1
-    xi_edges = np.concatenate(([-1.0], -1.0 + np.cumsum(wi)))  # length n_quad + 1
+    inputs = evaluate_time_functions(config, t_array)
+    inputs.update({'t': t_array, 'f': f_values, 's': s_values})
 
-    # Initialize climate damage ratios for first timestep (uniform over quadrature grid)
-    omega_yi_Omega_base_ratio_prev = np.ones(n_quad)
-    Omega_Omega_base_ratio_prev = 1.0
+    state = {'K': sp.K_initial, 'Ecum': sp.Ecum_initial, 'H1': sp.H1_initial, 'H2': sp.H2_initial, 'H3': sp.H3_initial}
+    # First step: damage distributed uniformly, aggregate damage equal to Omega_base
+    omega_yi_Omega_base_ratio = np.ones(len(grid.Fi))
+    Omega_Omega_base_ratio = 1.0
 
-    # Initialize state variables
-    state = {
-        'K': config.scalar_params.K_initial,
-        'Ecum': config.scalar_params.Ecum_initial,
-        'H1': config.scalar_params.H1_initial,
-        'H2': config.scalar_params.H2_initial,
-        'H3': config.scalar_params.H3_initial,
-    }
+    U = np.zeros(len(t_array))
+    step_records = []
+    for i in range(len(t_array)):
+        step_inputs = {name: values[i] for name, values in inputs.items()}
+        tendencies, diagnostics = calculate_tendencies(state, sp, step_inputs,
+                                                       omega_yi_Omega_base_ratio, Omega_Omega_base_ratio,
+                                                       grid, dt, store_detailed_output)
+        U[i] = tendencies['U']
+        if store_detailed_output:
+            step_records.append({**state, **diagnostics})
 
-    # Initialize storage for variables
-    results = {}
+        state = {
+            'K': state['K'] + dt * tendencies['dK_dt'],
+            'Ecum': max(0.0, state['Ecum'] + dt * tendencies['dEcum_dt']),
+            'H1': state['H1'] + dt * tendencies['dH1_dt'],
+            'H2': state['H2'] + dt * tendencies['dH2_dt'],
+            'H3': state['H3'] + dt * tendencies['dH3_dt'],
+        }
+        omega_yi_Omega_base_ratio = tendencies['omega_yi_Omega_base_ratio']
+        Omega_Omega_base_ratio = tendencies['Omega_Omega_base_ratio']
 
-    if store_detailed_output:
-        # Store params for create_derived_variables()
-        results['params_list'] = []
-        # Add storage for primary variables
-        results.update({
-            'A': np.zeros(n_steps),
-            'sigma': np.zeros(n_steps),
-            'theta1': np.zeros(n_steps),
-            'f': np.zeros(n_steps),
-            'y_gross': np.zeros(n_steps),
-            'delta_T': np.zeros(n_steps),
-            'Omega': np.zeros(n_steps),
-            'Omega_base': np.zeros(n_steps),
-            'Omega_calc': np.zeros(n_steps),
-            'Gini': np.zeros(n_steps),
-            'gini': np.zeros(n_steps),
-            'y_damaged': np.zeros(n_steps),
-            'climate_damage': np.zeros(n_steps),
-            'tax_amount': np.zeros(n_steps),
-            'log_deltaU_norm': np.full(n_steps, LOG_DELTAU_NO_TAX),
-            'aggregate_utility': np.zeros(n_steps),
-            'mu': np.zeros(n_steps),
-            'lambda_abate': np.zeros(n_steps),
-            'abateCost_amount': np.zeros(n_steps),
-            'y_net': np.zeros(n_steps),
-            'e': np.zeros(n_steps),
-            'dK_dt': np.zeros(n_steps),
-            's': np.zeros(n_steps),
-            'y_net_yi': np.zeros((n_steps, n_quad)),
-            'omega_yi': np.zeros((n_steps, n_quad)),
-            'utility_yi': np.zeros((n_steps, n_quad)),
-            'average_tax_rate_yi': np.zeros((n_steps, n_quad)),
-            'marginal_tax_rate_yi': np.zeros((n_steps, n_quad)),
-            'max_average_tax_rate': np.zeros(n_steps),
-            'max_marginal_tax_rate': np.zeros(n_steps),
-            'emission_ratio': np.zeros(n_steps),
-            'E_extra': np.zeros(n_steps),
-            'consumption_extra': np.zeros(n_steps),
-            'H1': np.zeros(n_steps),
-            'H2': np.zeros(n_steps),
-            'H3': np.zeros(n_steps),
-        })
+    if not store_detailed_output:
+        return {'t': t_array, 'U': U}
 
-    # Always store time, state variables, and objective function variables
+    results = {name: np.array([record[name] for record in step_records], dtype=float) for name in step_records[0]}
+    results.update({name: np.asarray(inputs[name], dtype=float) for name in REPORTED_INPUTS})
+    results['Gini'] = results['gini']
     results.update({
         't': t_array,
-        'K': np.zeros(n_steps),
-        'Ecum': np.zeros(n_steps),
-        'U': np.zeros(n_steps),
-        'L': np.zeros(n_steps),  # Needed for objective function
+        'U': U,
+        'xi': grid.xi,
+        'wi': grid.wi,
+        'xi_edges': grid.xi_edges,
+        'Fi': grid.Fi,
+        'Fwi': grid.Fwi,
+        'Fi_edges': grid.Fi_edges,
     })
-
-    # Store quadrature information (for xlsx output)
-    if store_detailed_output:
-        results.update({
-            'xi': xi,
-            'wi': wi,
-            'xi_edges': xi_edges,
-            'Fi': (xi + 1.0) / 2.0,
-            'Fwi': wi / 2.0,
-            'Fi_edges': (xi_edges + 1.0) / 2.0,
-        })
-
-    # Time stepping loop
-    for i, t in enumerate(t_array):
-        # Evaluate time-dependent parameters at current time
-        params = evaluate_params_at_time(t, config)
-        params['f'] = f_values[i]
-        params['s'] = s_values[i]
-
-        # Pass dt for extra emission pulse timing
-        params['dt'] = dt
-
-        if store_detailed_output:
-            results['params_list'].append(params)
-
-        # Calculate all variables and tendencies at current time.
-        # Use previous-timestep damage ratios to avoid circular dependency.
-        outputs = calculate_tendencies(state, params,
-                                      omega_yi_Omega_base_ratio_prev,
-                                      Omega_Omega_base_ratio_prev,
-                                      xi, xi_edges, wi, store_detailed_output)
-
-        # Always store variables needed for objective function
-        results['U'][i] = outputs['U']
-        results['L'][i] = params['L']
-
-        if store_detailed_output:
-            # Store state variables
-            results['K'][i] = state['K']
-            results['Ecum'][i] = state['Ecum']
-
-            # Store time-dependent inputs
-            results['A'][i] = params['A']
-            results['sigma'][i] = params['sigma']
-            results['theta1'][i] = params['theta1']
-            results['f'][i] = params['f']
-
-            # Store primary per-capita variables
-            results['y_gross'][i] = outputs['y_gross']
-            results['y_damaged'][i] = outputs['y_damaged']
-            results['climate_damage'][i] = outputs['climate_damage']
-            results['y_net'][i] = outputs['y_net']
-            results['e'][i] = outputs['e']
-            results['mu'][i] = outputs['mu']
-            results['lambda_abate'][i] = outputs['lambda_abate']
-            results['abateCost_amount'][i] = outputs['abateCost_amount']
-
-            # Store tax variables
-            results['tax_amount'][i] = outputs['tax_amount']
-            results['log_deltaU_norm'][i] = outputs['log_deltaU_norm']
-
-            # Store climate variables
-            results['delta_T'][i] = outputs['delta_T']
-            results['Omega'][i] = outputs['Omega']
-            results['Omega_base'][i] = outputs['Omega_base']
-            results['Omega_calc'][i] = outputs['Omega_calc']
-
-            # Store scalars
-            results['Gini'][i] = outputs['Gini']
-            results['gini'][i] = outputs['gini']
-            results['aggregate_utility'][i] = outputs['aggregate_utility']
-            results['s'][i] = outputs['s']
-
-            # Store distributions
-            results['y_net_yi'][i, :] = outputs['y_net_yi']
-            results['omega_yi'][i, :] = outputs['omega_yi']
-            results['utility_yi'][i, :] = outputs['utility_yi']
-            results['average_tax_rate_yi'][i, :] = outputs['average_tax_rate_yi']
-            results['marginal_tax_rate_yi'][i, :] = outputs['marginal_tax_rate_yi']
-            results['max_average_tax_rate'][i] = outputs['max_average_tax_rate']
-            results['max_marginal_tax_rate'][i] = outputs['max_marginal_tax_rate']
-
-            # Store tendencies
-            results['dK_dt'][i] = outputs['dK_dt']
-
-            results['emission_ratio'][i] = outputs['emission_ratio']
-            results['E_extra'][i] = outputs['E_extra']
-            results['consumption_extra'][i] = outputs['consumption_extra']
-
-            results['H1'][i] = state['H1']
-            results['H2'][i] = state['H2']
-            results['H3'][i] = state['H3']
-
-        # Euler step: update state for next iteration (skip on last step)
-        if i < n_steps - 1:
-            state['K'] = state['K'] + dt * outputs['dK_dt']
-            # do not allow cumulative emissions to go negative, making it colder than the initial condition
-            state['Ecum'] = max(0.0, state['Ecum'] + dt * outputs['dEcum_dt'])
-
-            # Euler step: impulse response heat-uptake state variables
-            state['H1'] = state['H1'] + dt * outputs['dH1_dt']
-            state['H2'] = state['H2'] + dt * outputs['dH2_dt']
-            state['H3'] = state['H3'] + dt * outputs['dH3_dt']
-
-            # Update damage ratios for next time step (lagged damage approach)
-            omega_yi_Omega_base_ratio_prev = outputs['omega_yi_Omega_base_ratio']
-            Omega_Omega_base_ratio_prev = outputs['Omega_Omega_base_ratio']
-
     return results
 
 
-def create_derived_variables(results):
+def create_derived_variables(results, scalar_params):
     """
-    Create all derived variables from integration results.
-
-    Computes total (uppercase) variables from per-capita (lowercase) variables,
-    consumption/savings variables, marginal costs, and Gini coefficients.
+    Add derived variables to the detailed results of integrate_model.
 
     Parameters
     ----------
     results : dict
-        Results dictionary from integrate_model() containing:
-        - Time series of primary per-capita variables (y_gross, y_net, e, mu, etc.)
-        - params_list: list of parameter dicts at each timestep
-        - L: population array
-        - All distribution arrays (y_net_yi, omega_yi, utility_yi)
+        Detailed results of integrate_model (modified in place and returned)
+    scalar_params : ScalarParameters
 
     Returns
     -------
     dict
-        Updated results dictionary with derived variables added:
-        - Total variables: Y_gross, Y_net, Y_damaged, E, AbateCost, Climate_damage
-        - Consumption/savings: Consumption, consumption, Savings, savings
-        - Other: marginal_abatement_cost, Lambda, redistribution, Redistribution_amount
-        - Gini: (removed - gini_consumption, gini_utility, etc. no longer computed)
-        - Discount rate: r_consumption (annual effective consumption discount rate from
-          the welfare-weighted Ramsey rule over the income distribution)
-
-    Notes
-    -----
-    All operations are vectorized over numpy arrays for efficiency.
-    Modifies results dict in-place and returns it.
+        results with:
+        - totals (uppercase) from per-capita (lowercase) values: Y_gross, Y_damaged,
+          Y_net, AbateCost, E, Climate_damage
+        - Consumption, consumption, Savings, savings
+        - marginal_abatement_cost from mu (standard DICE formula)
+        - aliases Lambda (= lambda_abate) and dEcum_dt (= E)
+        - r_consumption: annual effective consumption discount rate from the
+          welfare-weighted Ramsey rule over the income distribution
     """
-    # Extract parameter arrays from params_list
-    params_list = results['params_list']
     n_steps = len(results['t'])
-
-    s_array = np.array([p['s'] for p in params_list])
-    theta1_array = np.array([p['theta1'] for p in params_list])
-    theta2_array = np.array([p['theta2'] for p in params_list])
-    eta_array = np.array([p['eta'] for p in params_list])
-    rho = params_list[0]['rho']
-
-    # Extract primary arrays
+    s_array = results['s']
+    eta = scalar_params.eta
+    rho = scalar_params.rho
     L = results['L']
-    y_gross = results['y_gross']
-    y_damaged = results['y_damaged']
-    climate_damage = results['climate_damage']
-    y_net = results['y_net']
-    e = results['e']
-    mu = results['mu']
-    lambda_abate = results['lambda_abate']
-    abateCost_amount = results['abateCost_amount']
 
-    # Compute total (uppercase) variables from per-capita via vectorized multiplication
-    Y_gross = y_gross * L
-    Y_damaged = y_damaged * L
-    Y_net = y_net * L
-    AbateCost = abateCost_amount * L
-    E = e * L
-    Climate_damage = climate_damage * L
+    # Totals (uppercase) from per-capita values
+    Y_gross = results['y_gross'] * L
+    Y_damaged = results['y_damaged'] * L
+    Y_net = results['y_net'] * L
+    AbateCost = results['abateCost_amount'] * L
+    E = results['e'] * L
+    Climate_damage = results['climate_damage'] * L
 
-    # Compute consumption and savings variables
     Consumption = (1.0 - s_array) * Y_net
-    consumption = (1.0 - s_array) * y_net
+    consumption = (1.0 - s_array) * results['y_net']
     Savings = s_array * Y_net
-    savings = s_array * y_net
+    savings = s_array * results['y_net']
 
-    # Compute marginal abatement cost using standard DICE formula
-    marginal_abatement_cost = theta1_array * (mu ** (theta2_array - 1.0))
+    # Marginal abatement cost using standard DICE formula
+    marginal_abatement_cost = results['theta1'] * (results['mu'] ** (scalar_params.theta2 - 1.0))
 
-    # Per-quantile consumption on the [0, 1] quadrature grid (used for the discount rate below)
-    Fwi = results['wi'] / 2.0  # Gauss-Legendre weights remapped from [-1,1] to [0,1]
-    c_yi = np.maximum((1.0 - s_array)[:, None] * results['y_net_yi'], EPSILON)  # shape (n_steps, n_quad)
-
-    # Create aliases
-    Lambda = lambda_abate
-
-    # Add dEcum_dt as alias to E for consistency
-    dEcum_dt = E
-
-    # Compute annual effective consumption discount rate via the welfare-weighted Ramsey rule.
+    # Annual effective consumption discount rate via the welfare-weighted Ramsey rule.
     #
     # The standard Ramsey rule, r = rho + eta * g, assumes a single representative agent
     # growing at one rate g. When income groups grow at different rates there is no unique g;
@@ -800,12 +527,14 @@ def create_derived_variables(results):
     #     M(t)  = sum_j Fwi_j * c_yi(t)_j^(-eta)
     #     r(t)  = exp(rho * dt) * M(t) / M(t+dt) - 1.
     # This reduces exactly to exp(rho*dt) * (c(t+dt)/c(t))^eta - 1 when the distribution is
-    # uniform, so single-distribution results are unchanged. (Fwi and c_yi computed above.)
+    # uniform, so single-distribution results are unchanged.
     t_array = results['t']
     dt = t_array[1] - t_array[0] if n_steps > 1 else 1.0
+    Fwi = results['Fwi']
+    c_yi = np.maximum((1.0 - s_array)[:, None] * results['y_net_yi'], EPSILON)  # shape (n_steps, n_quad)
 
     # Social marginal utility at each timestep; strictly positive because c_yi >= EPSILON.
-    social_marginal_utility = np.sum(Fwi[None, :] * c_yi ** (-eta_array[:, None]), axis=1)
+    social_marginal_utility = np.sum(Fwi[None, :] * c_yi ** (-eta), axis=1)
 
     r_consumption = np.zeros(n_steps)
     if n_steps > 1:
@@ -815,7 +544,6 @@ def create_derived_variables(results):
         # Final step has no forward data; reuse the previous step's growth (as before).
         r_consumption[-1] = r_consumption[-2]
 
-    # Add all derived variables to results dict
     results.update({
         'Y_gross': Y_gross,
         'Y_damaged': Y_damaged,
@@ -828,9 +556,8 @@ def create_derived_variables(results):
         'Savings': Savings,
         'savings': savings,
         'marginal_abatement_cost': marginal_abatement_cost,
-        'Lambda': Lambda,
-        'dEcum_dt': dEcum_dt,
+        'Lambda': results['lambda_abate'],
+        'dEcum_dt': E,
         'r_consumption': r_consumption,
     })
-
     return results

@@ -101,3 +101,12 @@ GEOMETRIC_GROWTH_RATE_BRACKET = (-0.5, 100.0)
 # Control points closer in time than this are treated as duplicates (the first is kept)
 # when building PCHIP control trajectories
 CONTROL_TIME_DUPLICATE_TOLERANCE = 1e-10
+
+# Root solve for the equal-utility-loss tax (distribution_utilities.find_log_deltaU_equal_utility)
+# Bracket in log(deltaU), normalized income units: from -(|tax_exponent - 1| * |log(max income)|
+# + TAX_LOG_DELTAU_BRACKET_MARGIN), where revenue is negligible, to log(TAX_DELTAU_MAX), where
+# everyone is taxed to (nearly) zero
+TAX_LOG_DELTAU_BRACKET_MARGIN = 50.0
+TAX_DELTAU_MAX = 1e10
+# Post-solve check: post-tax income (normalized, O(1)) may decrease with rank by at most this
+TAX_MONOTONICITY_TOLERANCE = EPSILON * 1e3

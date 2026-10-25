@@ -272,7 +272,7 @@ def main():
 
     # Run integration
     print(f'\nRunning forward integration...')
-    results = create_derived_variables(integrate_model(config, f_values, s_values))
+    results = create_derived_variables(integrate_model(config, f_values, s_values, True), config.scalar_params)
     run_name = f"{config.run_name}{'_const' if is_json_file else '_forward'}"
 
     # Display results

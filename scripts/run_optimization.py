@@ -187,7 +187,7 @@ def main():
     print_header("SAVING RESULTS")
     print("Running forward model with optimal control...")
     f_values, s_values = control_arrays(config, opt_results['controls'])
-    optimal_results = create_derived_variables(integrate_model(config, f_values, s_values))
+    optimal_results = create_derived_variables(integrate_model(config, f_values, s_values, True), config.scalar_params)
 
     print("\nSaving integration results (CSV and PDF)...")
     config_filename_base = os.path.basename(config_path)

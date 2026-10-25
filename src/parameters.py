@@ -40,12 +40,12 @@ def create_constant(value):
     Returns
     -------
     callable
-        Function f(t) = value
+        Function f(t) = value (an array of the shape of t)
     """
-    return lambda t: value
+    return lambda t: np.full(np.shape(t), value)
 
 
-def create_exponential_growth(exponential_scaling, growth_rate, additive_constant=0.0):
+def create_exponential_growth(exponential_scaling, growth_rate, additive_constant):
     """
     Create an exponential growth/decay function.
 
@@ -55,8 +55,8 @@ def create_exponential_growth(exponential_scaling, growth_rate, additive_constan
         Scaling factor for the exponential term
     growth_rate : float
         Growth rate (yr^-1). Positive for growth, negative for decay.
-    additive_constant : float, optional
-        Constant offset added to the exponential (default: 0.0)
+    additive_constant : float
+        Constant offset added to the exponential
 
     Returns
     -------
@@ -66,10 +66,10 @@ def create_exponential_growth(exponential_scaling, growth_rate, additive_constan
     Examples
     --------
     Population growth at 1% per year:
-    >>> L = create_exponential_growth(7e9, 0.01)
+    >>> L = create_exponential_growth(7e9, 0.01, 0.0)
 
     Carbon intensity declining at 2% per year with floor:
-    >>> sigma = create_exponential_growth(0.5, -0.02, additive_constant=0.01)
+    >>> sigma = create_exponential_growth(0.5, -0.02, 0.01)
     """
     return lambda t: exponential_scaling * np.exp(growth_rate * t) + additive_constant
 
@@ -501,149 +501,46 @@ class ModelConfiguration:
 # Parameter Evaluation
 # =============================================================================
 
-def evaluate_params_at_time(t, config):
+# Exogenous time functions the model evaluates (the savings rate s, when prescribed,
+# is evaluated with the controls)
+EXOGENOUS_TIME_FUNCTIONS = ['A', 'L', 'sigma', 'theta1', 'gini', 'emission_ratio', 'Eland']
+
+
+def evaluate_time_functions(config, t_array):
     """
-    Evaluate all parameters at a specific time.
+    Evaluate the exogenous time functions at the calendar times t_array.
 
-    Combines scalar parameters with time-dependent function evaluations
-    into a single dictionary suitable for use with calculate_tendencies().
-
-    Parameters
-    ----------
-    t : float
-        Time at which to evaluate parameters (calendar year)
-    config : ModelConfiguration
-        Complete model configuration
+    Time functions receive relative time t - t_base (0 = base year).
 
     Returns
     -------
     dict
-        Dictionary containing all parameters evaluated at time t,
-        with keys matching those expected by calculate_tendencies():
-        'alpha', 'delta', 'psi1', 'psi2', 'y_damage_distribution_exponent', 'y_net_reference',
-        'eta', 'rho', 'gini', 'theta2', 'mu_max', 'impulse_response_a1/a2/a3/tau1/tau2/tau3',
-        'A', 'L', 'sigma', 'theta1'. The controls f and s are added by integrate_model.
-
-    Notes
-    -----
-    Time functions receive relative time (t - t_base) so they can be parameterized
-    for relative time where 0 = base year.
+        Maps each name in EXOGENOUS_TIME_FUNCTIONS to an array over t_array
     """
-    sp = config.scalar_params
-    tf = config.time_functions
-
-    # Compute relative time for time functions (t_base is the reference year)
-    t_relative = t - sp.t_base
-
-    params = {
-        # Time (calendar year for output/display)
-        't': t,
-
-        # Scalar parameters
-        'alpha': sp.alpha,
-        'delta': sp.delta,
-        'psi1': sp.psi1,
-        'psi2': sp.psi2,
-        'y_damage_distribution_exponent': sp.y_damage_distribution_exponent,
-        'y_net_reference': sp.y_net_reference,
-        'income_dependent_aggregate_damage': sp.income_dependent_aggregate_damage,
-        'tax_equity': sp.tax_equity,
-        'eta': sp.eta,
-        'rho': sp.rho,
-        'theta2': sp.theta2,
-        'mu_max': sp.mu_max,
-
-        # Time-dependent function evaluations (use relative time)
-        'A': tf['A'](t_relative),
-        'L': tf['L'](t_relative),
-        'sigma': tf['sigma'](t_relative),
-        'theta1': tf['theta1'](t_relative),
-        'gini': tf['gini'](t_relative),
-
-        # Lorenz formulation parameters
-        'use_empirical_lorenz': sp.use_empirical_lorenz,
-    }
-
-    # Handle optional time functions with defaults for backward compatibility
-    if 'emission_ratio' in tf:
-        params['emission_ratio'] = tf['emission_ratio'](t_relative)
-    else:
-        params['emission_ratio'] = 1.0  # No CO2e adjustment
-
-    if 'Eland' in tf:
-        params['Eland'] = tf['Eland'](t_relative)
-    else:
-        params['Eland'] = 0.0  # No land emissions
-
-    # Impulse response parameters
-    params['impulse_response_a1'] = sp.impulse_response_a1
-    params['impulse_response_a2'] = sp.impulse_response_a2
-    params['impulse_response_a3'] = sp.impulse_response_a3
-    params['impulse_response_tau1'] = sp.impulse_response_tau1
-    params['impulse_response_tau2'] = sp.impulse_response_tau2
-    params['impulse_response_tau3'] = sp.impulse_response_tau3
-
-    params['year_extra_emission'] = sp.year_extra_emission
-    params['amount_extra_emission'] = sp.amount_extra_emission
-    params['year_extra_consumption'] = sp.year_extra_consumption
-    params['amount_extra_consumption'] = sp.amount_extra_consumption
-    params['loose_epsilon'] = sp.loose_epsilon
-
-    return params
+    t_relative = t_array - config.scalar_params.t_base
+    return {name: config.time_functions[name](t_relative) for name in EXOGENOUS_TIME_FUNCTIONS}
 
 
 # =============================================================================
 # Configuration Loading from JSON
 # =============================================================================
 
+# Time-function types in the configuration and their factories; the remaining keys of a
+# time-function specification are the factory's arguments
+TIME_FUNCTION_FACTORIES = {
+    'constant': create_constant,
+    'exponential_growth': create_exponential_growth,
+    'logistic_growth': create_logistic_growth,
+    'piecewise_linear': create_piecewise_linear,
+    'double_exponential_growth': create_double_exponential_growth,
+    'gompertz_growth': create_gompertz_growth,
+}
+
+
 def _create_time_function(func_spec):
-    """
-    Create a time-dependent function from JSON specification.
-
-    Parameters
-    ----------
-    func_spec : dict
-        Dictionary with 'type' key and type-specific parameters
-
-    Returns
-    -------
-    callable
-        Time-dependent function
-    """
-    func_type = func_spec['type']
-
-    if func_type == 'constant':
-        return create_constant(func_spec['value'])
-    elif func_type == 'exponential_growth':
-        return create_exponential_growth(
-            func_spec['exponential_scaling'],
-            func_spec['growth_rate'],
-            func_spec.get('additive_constant', 0.0)
-        )
-    elif func_type == 'logistic_growth':
-        return create_logistic_growth(
-            func_spec['L0'],
-            func_spec['L_inf'],
-            func_spec['growth_rate']
-        )
-    elif func_type == 'piecewise_linear':
-        return create_piecewise_linear(
-            func_spec['time_points'],
-            func_spec['values']
-        )
-    elif func_type == 'double_exponential_growth':
-        return create_double_exponential_growth(
-            func_spec['initial_value'],
-            func_spec['growth_rate_1'],
-            func_spec['growth_rate_2'],
-            func_spec['fract_1']
-        )
-    elif func_type == 'gompertz_growth':
-        return create_gompertz_growth(
-            func_spec['initial_value'],
-            func_spec['final_value'],
-            func_spec['adjustment_coefficient']
-        )
+    """Create a time-dependent function from its JSON specification ('type' plus arguments)."""
+    arguments = {key: value for key, value in func_spec.items() if key != 'type'}
+    return TIME_FUNCTION_FACTORIES[func_spec['type']](**arguments)
 
 
 def _filter_description_keys(d):
@@ -721,7 +618,7 @@ def configuration_from_dict(config_data):
     if 's' not in time_functions:
         # Use initial_guess_s as default constant s function
         initial_s = optimization_params.initial_guess_s if optimization_params.initial_guess_s is not None else 0.24
-        time_functions['s'] = lambda t: initial_s if isinstance(initial_s, float) else initial_s[0]
+        time_functions['s'] = create_constant(initial_s if isinstance(initial_s, float) else initial_s[0])
 
     # Extract run name
     run_name = config_data['run_name']

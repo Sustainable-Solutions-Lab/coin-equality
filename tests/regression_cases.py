@@ -30,12 +30,12 @@ import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from scipy.special import roots_legendre
 
 from src.parameters import load_configuration
 from src.economic_model import integrate_model, create_derived_variables, time_grid
 from src.optimization import optimize, control_arrays, control_trajectory, calculate_control_times
 from src.distribution_utilities import (
+    quadrature_grid,
     find_log_deltaU_equal_utility,
     compute_post_tax_income_equal_utility,
     L_pareto_derivative,
@@ -151,7 +151,7 @@ def run_forward_results(case_name):
     config = load_configuration(str(case['config_path']()))
     t_grid, f_values, s_values = stored_controls(case['controls_gid'])
     assert np.array_equal(t_grid, time_grid(config.integration_params))
-    return create_derived_variables(integrate_model(config, f_values, s_values))
+    return create_derived_variables(integrate_model(config, f_values, s_values, True), config.scalar_params)
 
 
 def run_forward_case(case_name):
@@ -208,7 +208,8 @@ def run_optimization_case(case_name, initial_guess_f_perturbation):
         outputs[f'{name}_times'] = np.asarray(times)
         outputs[f'{name}_values'] = np.asarray(values)
 
-    forward = create_derived_variables(integrate_model(config, *control_arrays(config, opt_results['controls'])))
+    forward = create_derived_variables(integrate_model(config, *control_arrays(config, opt_results['controls']), True),
+                                       config.scalar_params)
     for key in ['f', 's', 'mu', 'delta_T', 'U', 'y_net']:
         outputs[f'forward_{key}'] = forward[key]
     return outputs
@@ -219,11 +220,9 @@ def run_optimization_case(case_name, initial_guess_f_perturbation):
 # =============================================================================
 
 def run_kernels():
-    n_quad = 32
-    xi, wi = roots_legendre(n_quad)
-    xi_edges = np.concatenate(([-1.0], -1.0 + np.cumsum(wi)))
-    Fi = (xi + 1.0) / 2.0
-    omega_yi = np.linspace(0.002, 0.03, n_quad)
+    grid = quadrature_grid(32)
+    Fi = grid.Fi
+    omega_yi = np.linspace(0.002, 0.03, len(Fi))
     y_gross = 18000.0
     Omega_calc = 0.006
 
@@ -237,13 +236,15 @@ def run_kernels():
     for tax_exponent, log_deltaU in [(0.4, -3.0), (1.0, -4.0), (1.5, -5.0), (3.0, -2.0), (300.0, -900.0)]:
         outputs[f'post_tax_eta{tax_exponent}'] = compute_post_tax_income_equal_utility(y_norm, log_deltaU, tax_exponent)
 
+    y_damaged_mean = y_gross * (1.0 - Omega_calc)
     for use_empirical_lorenz in [True, False]:
+        dLdF = L_empirical_lorenz_derivative(Fi, 0.57) if use_empirical_lorenz else L_pareto_derivative(Fi, 0.57)
+        y_pretax_norm = y_gross * dLdF * (1.0 - omega_yi) / y_damaged_mean
         for tax_exponent in [0.5, 1.0, 1.5, 2.0, 250.0]:
             for tax_amount in [5.0, 500.0]:
                 key = f'log_deltaU_emp{int(use_empirical_lorenz)}_eta{tax_exponent}_tax{tax_amount}'
                 outputs[key] = np.array(find_log_deltaU_equal_utility(
-                    y_gross, 0.57, Omega_calc, omega_yi, xi_edges, tax_exponent, tax_amount,
-                    use_empirical_lorenz, tol=1e-9, xi=xi, wi=wi))
+                    y_pretax_norm, tax_amount / y_damaged_mean, tax_exponent, grid.Fwi, 1e-9))
 
     for n_points, t_end in [(4, 400.0), (6, 400.0), (9, 400.0), (11, 400.0), (15, 400.0), (24, 400.0), (4, 50.0), (6, 50.0)]:
         times, r0 = calculate_control_times(n_points, 0.0, t_end, 1.0, 0.1)

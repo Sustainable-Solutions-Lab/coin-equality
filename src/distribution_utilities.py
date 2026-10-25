@@ -3,12 +3,14 @@ Income distribution functions for the quadrature over population rank F in [0, 1
 
 This module provides:
 - Pareto-Lorenz and empirical Lorenz curves and their derivatives
+- The Gauss-Legendre quadrature grid over population rank
 - Equal-utility-loss progressive taxation (closed-form schedule and revenue root solve)
-- Stepwise interpolation of per-quadrature-point values
 """
 
+from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import root_scalar
+from scipy.special import roots_legendre
 from src.constants import (
     EPSILON,
     LOG_DELTAU_NO_TAX,
@@ -21,7 +23,39 @@ from src.constants import (
     EMPIRICAL_LORENZ_W2,
     EMPIRICAL_LORENZ_W3,
     EMPIRICAL_LORENZ_BASE_GINI,
+    TAX_LOG_DELTAU_BRACKET_MARGIN,
+    TAX_DELTAU_MAX,
+    TAX_MONOTONICITY_TOLERANCE,
 )
+
+
+#========================================================================================
+# Quadrature over population rank
+#========================================================================================
+
+@dataclass(frozen=True)
+class QuadratureGrid:
+    """
+    Gauss-Legendre quadrature over population rank F in [0, 1].
+
+    Node i represents the population interval [Fi_edges[i], Fi_edges[i+1]), whose width is
+    its weight Fwi[i]; each node lies strictly inside its interval (Chebyshev-Markov-Stieltjes
+    separation), so values at the nodes are also the stepwise values on these intervals.
+    """
+    xi: np.ndarray        # nodes on [-1, 1]
+    wi: np.ndarray        # weights on [-1, 1] (sum to 2)
+    xi_edges: np.ndarray  # interval edges on [-1, 1]: -1 + cumulative weights (length n + 1)
+    Fi: np.ndarray        # nodes mapped to [0, 1]
+    Fwi: np.ndarray       # weights on [0, 1] (sum to 1)
+    Fi_edges: np.ndarray  # interval edges on [0, 1]
+
+
+def quadrature_grid(n_quad):
+    """Gauss-Legendre quadrature grid with n_quad nodes over population rank."""
+    xi, wi = roots_legendre(n_quad)
+    xi_edges = np.concatenate(([-1.0], -1.0 + np.cumsum(wi)))
+    return QuadratureGrid(xi=xi, wi=wi, xi_edges=xi_edges,
+                          Fi=(xi + 1.0) / 2.0, Fwi=wi / 2.0, Fi_edges=(xi_edges + 1.0) / 2.0)
 
 
 #========================================================================================
@@ -154,39 +188,6 @@ def L_empirical_lorenz_derivative(F, G):
 
 
 #========================================================================================
-# Helper function for income-distribution damage lookup
-#========================================================================================
-
-def _get_omega_at_F(F, omega_yi_calc, xi_edges):
-    """
-    Get damage fraction at population rank F by stepwise interpolation of the
-    per-quadrature-point damage fractions omega_yi_calc over the full [0, 1] range.
-
-    Parameters
-    ----------
-    F : float or ndarray
-        Population rank(s) in [0, 1]
-    omega_yi_calc : ndarray
-        Damage fractions at quadrature points
-    xi_edges : ndarray
-        Standard quadrature edges in xi space [-1, 1]
-
-    Returns
-    -------
-    float or ndarray
-        Damage fraction(s) at F
-    """
-    F_arr = np.asarray(F)
-    scalar_input = np.ndim(F) == 0
-    if scalar_input:
-        F_arr = F_arr.reshape(1)
-
-    xi_vals = 2.0 * F_arr - 1.0
-    omega = stepwise_interpolate(xi_vals, omega_yi_calc, xi_edges)
-    return float(omega[0]) if scalar_input else omega
-
-
-#========================================================================================
 # Equal utility loss taxation functions
 #========================================================================================
 
@@ -280,121 +281,62 @@ def compute_post_tax_income_equal_utility(y_F, log_deltaU, eta):
     return float(c_F[0]) if scalar_input else c_F
 
 
-def find_log_deltaU_equal_utility(
-    y_gross,
-    gini,
-    Omega_calc,
-    omega_yi_calc, xi_edges,
-    eta,
-    tax_amount,
-    use_empirical_lorenz,
-    tol,
-    xi, wi,
-):
+def find_log_deltaU_equal_utility(y_pretax_norm, tax_amount_norm, tax_exponent, Fwi, tol):
     """
-    Find log(deltaU_norm) for equal-utility-loss taxation.
+    Solve for log(deltaU) of the equal-utility-loss tax schedule that raises the revenue.
 
-    Returns log(deltaU_norm) in normalized income units. To recover post-tax income
-    at raw income y, the caller must:
+    Works in normalized income units (incomes divided by mean damaged income): post-tax
+    income is c_norm = compute_post_tax_income_equal_utility(y_pretax_norm, log_deltaU,
+    tax_exponent) and the revenue constraint is sum_i Fwi_i (y_pretax_norm_i - c_norm_i)
+    = tax_amount_norm.
 
-        c = compute_post_tax_income_equal_utility(y / y_damaged_mean, log_deltaU_norm, eta) * y_damaged_mean
+    Returns log(deltaU) rather than deltaU: at high tax exponents (>= ~290) the solution
+    can be log_deltaU ~ -1242, which exp() would underflow to 0, silently disabling
+    progressive taxation.
 
-    Returns log(deltaU) instead of deltaU itself to avoid float64 underflow at high
-    tax exponents (>= ~290), where the true solution can be log_deltaU ≈ -1242.
-    Converting back via exp() would give 0, silently disabling progressive taxation.
-
-    With CRRA utility U(c) = c^(1-η)/(1-η):
-    - Post-tax income: c_norm(F) = [y_norm(F)^(1-η) - (1-η)·deltaU_norm]^(1/(1-η))
-    - Revenue constraint (in raw units): ∫₀¹ (y(F) - c(F)) dF = tax_amount
-
-    Special case η=1 (log utility):
-    - c(F) = y(F) * exp(-deltaU)  (scale-invariant)
-    - Degenerates to uniform tax rate r = tax_amount / mean_income.
+    With tax_exponent = 1 (log utility) the schedule c = y exp(-deltaU) is a uniform tax
+    rate r = tax_amount_norm, so deltaU = -ln(1 - r) in closed form.
 
     Parameters
     ----------
-    y_gross : float
-        Gross income per capita before damage
-    gini : float
-        Gini coefficient
-    Omega_calc : float
-        Aggregate climate damage fraction
-    omega_yi_calc : ndarray
-        Damage fractions at quadrature points
-    xi_edges : ndarray
-        Standard quadrature edges in xi space [-1, 1]
-    eta : float
-        Coefficient of relative risk aversion (or eta_effective for the continuous tax knob)
-    tax_amount : float
-        Target per-capita tax revenue (in raw income units)
-    use_empirical_lorenz : bool
-        If True, use Empirical Lorenz; if False, use Pareto
+    y_pretax_norm : ndarray
+        Pre-tax income at the quadrature nodes, normalized by mean damaged income
+    tax_amount_norm : float
+        Required per-capita revenue, normalized by mean damaged income
+    tax_exponent : float
+        Exponent of the pseudo-utility, eta_eff = 1 + tax_equity/(1-tax_equity) * (eta - 1)
+    Fwi : ndarray
+        Quadrature weights over population rank (sum to 1)
     tol : float
-        Tolerance for root finding (in log-deltaU space)
-    xi : ndarray
-        Gauss-Legendre quadrature nodes on [-1, 1]
-    wi : ndarray
-        Gauss-Legendre quadrature weights
+        Tolerance of the root solve in log-deltaU
 
     Returns
     -------
     float
-        log(deltaU_norm), the log of the normalized utility-loss constant.
-        Returns LOG_DELTAU_NO_TAX (= -inf) when no tax is needed.
+        log(deltaU) in normalized units; LOG_DELTAU_NO_TAX (= -inf) when a negligible
+        tax already meets the target.
     """
-    # If tax_amount is negligible, return no-tax sentinel
-    if tax_amount < EPSILON:
-        return LOG_DELTAU_NO_TAX
-
-    # Mean damaged income (what we're taxing from)
-    y_damaged_mean = y_gross * (1.0 - Omega_calc)
-
-    # Special case η=1 (log utility): degenerates to uniform tax rate
-    # c = y * exp(-deltaU), so tax rate r = 1 - exp(-deltaU)
-    # Total tax = r * y_mean = tax_amount
-    # => r = tax_amount / y_mean
-    # => deltaU = -ln(1 - r)
-    # => log_deltaU = log(-ln(1 - r))
-    if abs(eta - 1.0) < EPSILON:
-        r = tax_amount / y_damaged_mean
+    if abs(tax_exponent - 1.0) < EPSILON:
         # Cap r to avoid log(0) or negative
-        r = min(r, 1.0 - EPSILON)
+        r = min(tax_amount_norm, 1.0 - EPSILON)
         deltaU = -np.log(1.0 - r)
         return np.log(deltaU)
-
-    # Map quadrature from [-1, 1] to [0, 1] in F space
-    Fi = (xi + 1.0) / 2.0
-    Fwi = wi / 2.0
-
-    # Get pre-tax income y(F) = y_gross * dL/dF * (1 - omega)
-    if use_empirical_lorenz:
-        dLdF = L_empirical_lorenz_derivative(Fi, gini)
-    else:
-        dLdF = L_pareto_derivative(Fi, gini)
-
-    omega_Fi = _get_omega_at_F(Fi, omega_yi_calc, xi_edges)
-    y_F = y_gross * dLdF * (1.0 - omega_Fi)
-
-    # Normalize incomes so y_F_norm is O(1). We return log_deltaU_norm directly;
-    # the caller is responsible for normalizing y by y_damaged_mean and rescaling c.
-    y_F_norm = y_F / y_damaged_mean
-    tax_amount_norm = tax_amount / y_damaged_mean
 
     def tax_revenue_minus_target(log_dU):
         # Solve in log-deltaU space: pass log_dU directly to the post-tax function.
         # No exp() conversion — this is the key fix that avoids underflow.
-        c_F_norm = compute_post_tax_income_equal_utility(y_F_norm, log_dU, eta)
-        return np.sum(Fwi * (y_F_norm - c_F_norm)) - tax_amount_norm
+        c_F_norm = compute_post_tax_income_equal_utility(y_pretax_norm, log_dU, tax_exponent)
+        return np.sum(Fwi * (y_pretax_norm - c_F_norm)) - tax_amount_norm
 
     # Dynamic bracket in log-deltaU space.
     # Lower bound: at high tax_exponent α, the tax formula involves y^α, so
     # log_deltaU scales as -α·log(y_max). Use a dynamic lower bound that
     # accounts for the actual exponent magnitude.
-    alpha = abs(eta - 1.0)
+    alpha = abs(tax_exponent - 1.0)
     with np.errstate(divide='ignore'):
-        log_y_max = np.log(np.max(y_F_norm))
-    log_dU_lo = -abs(alpha * log_y_max) - 50.0
-    log_dU_hi = np.log(1e10)
+        log_y_max = np.log(np.max(y_pretax_norm))
+    log_dU_lo = -abs(alpha * log_y_max) - TAX_LOG_DELTAU_BRACKET_MARGIN
+    log_dU_hi = np.log(TAX_DELTAU_MAX)
 
     f_lo = tax_revenue_minus_target(log_dU_lo)
     if f_lo >= 0:
@@ -404,9 +346,9 @@ def find_log_deltaU_equal_utility(
     f_hi = tax_revenue_minus_target(log_dU_hi)
     if f_hi < 0:
         raise ValueError(
-            f"Cannot raise required tax_amount={tax_amount:.6g} with equal utility loss taxation. "
-            f"Maximum possible revenue (taxing everyone to zero) is "
-            f"{(tax_amount_norm + f_hi) * y_damaged_mean:.6g}."
+            f"Cannot raise the required tax ({tax_amount_norm:.6g} of mean damaged income) with "
+            f"equal utility loss taxation. Maximum possible revenue (taxing everyone to zero) is "
+            f"{tax_amount_norm + f_hi:.6g} of mean damaged income."
         )
 
     sol = root_scalar(
@@ -422,67 +364,22 @@ def find_log_deltaU_equal_utility(
     log_deltaU_norm = sol.root
 
     # Post-solve invariant: c_F_norm must be finite and weakly monotone in F.
-    c_F_norm_check = compute_post_tax_income_equal_utility(y_F_norm, log_deltaU_norm, eta)
+    c_F_norm_check = compute_post_tax_income_equal_utility(y_pretax_norm, log_deltaU_norm, tax_exponent)
     if not np.all(np.isfinite(c_F_norm_check)):
         bad = np.where(~np.isfinite(c_F_norm_check))[0]
         raise RuntimeError(
             f"find_log_deltaU_equal_utility: post-solve c_F_norm contains non-finite values at "
-            f"indices {bad[:5].tolist()} (eta={eta:.4f}, log_deltaU_norm={log_deltaU_norm:.3g}, "
-            f"tax_amount={tax_amount:.3g})."
+            f"indices {bad[:5].tolist()} (tax_exponent={tax_exponent:.4f}, log_deltaU_norm={log_deltaU_norm:.3g}, "
+            f"tax_amount_norm={tax_amount_norm:.3g})."
         )
     diffs = np.diff(c_F_norm_check)
-    monotone_tol = EPSILON * 1e3  # in normalized units, c_norm is O(1)
+    monotone_tol = TAX_MONOTONICITY_TOLERANCE
     if not np.all(diffs >= -monotone_tol):
         bad = np.where(diffs < -monotone_tol)[0]
         raise RuntimeError(
             f"find_log_deltaU_equal_utility: post-solve c_F_norm not monotone in F at indices "
             f"{bad[:5].tolist()} (min diff = {diffs.min():.3g}, tol = {monotone_tol:.3g}, "
-            f"eta={eta:.4f}, log_deltaU_norm={log_deltaU_norm:.3g})."
+            f"tax_exponent={tax_exponent:.4f}, log_deltaU_norm={log_deltaU_norm:.3g})."
         )
 
     return log_deltaU_norm
-
-
-#========================================================================================
-# Stepwise interpolation and integration utilities
-#========================================================================================
-
-def stepwise_interpolate(F, yi, Fi_edges):
-    """
-    Stepwise (piecewise constant) interpolation over quadrature intervals.
-
-    Returns yi[i] for F in [Fi_edges[i], Fi_edges[i+1]).
-
-    Parameters
-    ----------
-    F : float or ndarray
-        Evaluation point(s) where interpolated values are desired.
-    yi : ndarray
-        Values at quadrature points (length N). yi[i] is the constant value
-        in interval [Fi_edges[i], Fi_edges[i+1]).
-    Fi_edges : ndarray
-        Interval boundaries (length N+1), must be monotonically increasing.
-
-    Returns
-    -------
-    float or ndarray
-        Interpolated value(s) at F. Returns same shape as F input.
-
-    Notes
-    -----
-    - For F < Fi_edges[0], returns yi[0]
-    - For F >= Fi_edges[-1], returns yi[-1]
-    - For Fi_edges[i] <= F < Fi_edges[i+1], returns yi[i]
-    """
-    F_array = np.atleast_1d(F)
-    scalar_input = np.ndim(F) == 0
-
-    # Find which interval each F value falls into
-    # searchsorted returns index i such that Fi_edges[i-1] <= F < Fi_edges[i]
-    # We want index for yi, so subtract 1 and clip to valid range
-    indices = np.searchsorted(Fi_edges, F_array, side='right') - 1
-    indices = np.clip(indices, 0, len(yi) - 1)
-
-    result = yi[indices]
-
-    return result[0] if scalar_input else result

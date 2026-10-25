@@ -167,7 +167,7 @@ def control_arrays(config, controls):
     if 's' in controls:
         s_values = control_trajectory(*controls['s'], t_relative)
     else:
-        s_values = np.array([config.time_functions['s'](t) for t in t_relative])
+        s_values = config.time_functions['s'](t_relative)
     return f_values, s_values
 
 
