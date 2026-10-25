@@ -19,18 +19,19 @@ Before changing anything, we built a regression suite (`tests/`). Its golden bas
 - **Forward integrations are bit-identical** to the original code in every test case. The one exception is a diagnostic in the η = 1 case, which differs by 3.5e-16 (one unit of round-off).
 - **The published results are reproduced.** Replaying the nine reference runs in `data/output/prod_s/9cases_s/` with their stored optimal controls reproduces every column of their published `*_results.csv` to 3.4e-13. The exception is `r_consumption`, whose formula was changed after those runs were made.
 - **Optimizer behavior is unchanged.** The short optimization test cases follow exactly the same optimizer path, evaluation by evaluation.
-- **Full re-optimization matches the manuscript.** Re-running the base case from scratch (9cases_s gid-1: τ = 0, β = 0; 5 refinement iterations, about 24,000 evaluations) with the new code gives:
+- **Full re-optimization matches the manuscript.** Three of the nine reference cases were re-optimized from scratch with the new code (5 refinement iterations, 21,000–31,000 evaluations each).
 
-  | | Published | Refactored code | Relative difference |
-  |---|---|---|---|
-  | Objective (discounted utility) | −6.487938701599e9 | −6.487938701599e9 | −2.8e-14 |
-  | Carbon price 2030 | $42.6238/tCO₂ | $42.6238/tCO₂ | −9.0e-7 |
-  | Carbon price 2100 | $248.5382/tCO₂ | $248.5382/tCO₂ | −8.1e-8 |
-  | Temperature change 2100 | 3.1075 °C | 3.1075 °C | +3.0e-8 |
+  Relative differences from the published runs:
 
-  Over 2020–2200, log₁₀ of the carbon price agrees within 1.7e-6 and the savings rate within 4.2e-7. The optimizer's path differs slightly from the published run's (evaluation counts differ from the second iteration on), because the two machines round differently. It converges to the same answer.
+  | Case | Objective | Carbon price 2030 | Carbon price 2100 | Temperature 2100 |
+  |---|---|---|---|---|
+  | gid-1 (τ = 0, β = 0) | −2.8e-14 | −9.0e-7 | −8.1e-8 | +3.0e-8 |
+  | gid-5 (τ = 0.5, β = 0.5) | −3.8e-15 | +1.5e-6 | +6.8e-7 | +2.4e-8 |
+  | gid-9 (τ = 0.998, β = 1) | +8.1e-14 | −8.0e-8 | −3.3e-7 | −5.8e-8 |
 
-  Re-optimizations of gid-5 (τ = 0.5, β = 0.5) and gid-9 (τ = 0.998, β = 1) were still running when this was written.
+  For example, the gid-5 carbon price in 2030 is $102.1068/tCO₂ against the published $102.1067. Over 2020–2200, log₁₀ of the carbon price agrees within 2.6e-6 and the savings rate within 4.2e-7 in all three cases.
+
+  The objective of every refinement iteration agrees to all 13 printed digits, except the last digit of gid-9's final iteration. The number of evaluations per iteration differs slightly from the published runs, because the two machines round differently and the optimizer takes a slightly different path. It converges to the same answer.
 
 ## Size and speed
 
@@ -52,7 +53,9 @@ One evaluation of the objective (a 400-year integration) now takes:
 - **τ = 0:** 36 ms instead of 237 ms;
 - **τ > 0:** 194 ms instead of 429 ms, where the tax root solve dominates.
 
-Both were measured on the same machine. The main reason is that the old code built a new PCHIP interpolant of f(t) and s(t) at every time step. On this machine the gid-1 re-optimization took 14 minutes; the published run took 92 minutes, on different hardware.
+Both were measured on the same machine. The main reason is that the old code built a new PCHIP interpolant of f(t) and s(t) at every time step.
+
+Whole re-optimizations on this machine took 14, 68 and 89 minutes for gid-1, gid-5 and gid-9. The published runs took 92, 148 and 232 minutes, on different hardware.
 
 ## What changed
 
