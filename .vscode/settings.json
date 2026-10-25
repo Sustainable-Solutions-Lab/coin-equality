@@ -1,0 +1,17 @@
+{
+  // Dark oxblood window tint so this repo's VS Code window is easy to tell apart.
+  "workbench.colorCustomizations": {
+    "titleBar.activeBackground": "#4a1c1f",
+    "titleBar.activeForeground": "#f5e6e7",
+    "titleBar.inactiveBackground": "#361416",
+    "titleBar.inactiveForeground": "#c4a9ab",
+    "activityBar.background": "#4a1c1f",
+    "activityBar.foreground": "#f5e6e7",
+    "statusBar.background": "#4a1c1f",
+    "statusBar.foreground": "#f5e6e7",
+    "sideBar.background": "#261012",
+    "editor.background": "#1c0c0d",
+    "panel.background": "#1c0c0d",
+    "terminal.background": "#1c0c0d"
+  }
+}
