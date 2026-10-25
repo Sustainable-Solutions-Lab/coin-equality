@@ -4,6 +4,7 @@
 - This is `coin-equality-refactor`, a private working copy of the public release in `Sustainable-Solutions-Lab/coin-equality` (the code and data accompanying the manuscript "Income inequality increases optimal carbon price"), made so the code can be cleaned up without touching the release
 - Remotes: `origin` is this repo; `upstream` is the public release and is fetch-only (its push URL is set to `DISABLED`). Never push to or re-enable pushing to `upstream`
 - `README.md` describes the release layout, how to run optimizations, and which script and data reproduce each manuscript figure
+- Python environment: the repo `.venv` (`pip install -r requirements.txt`); run tools as `.venv/bin/python`, `.venv/bin/pytest`
 
 ## Coding Philosophy
 This project prioritizes elegant, fail-fast code that surfaces errors quickly rather than hiding them.
@@ -56,6 +57,14 @@ This project prioritizes elegant, fail-fast code that surfaces errors quickly ra
 - Let Python's natural error messages guide debugging rather than custom error handling
 - All function arguments must be explicitly provided - no default values (`=None`) or conditional logic
 - Clean fail-fast approach - if required arguments are not supplied, the code should fail immediately with a clear error
+
+## Testing
+- Run the regression suite before every commit: `.venv/bin/python -m pytest` from the repository root (about a minute). All tests must pass
+- The suite compares against a golden baseline in `tests/baseline/` generated from the pre-cleanup code (`baseline_meta.json` records the commit and library versions). Case definitions and tolerances are in `tests/regression_cases.py`
+- Read the terminal summary of worst relative differences: a pure refactoring should give 0 (bit-identical) or round-off (below ~1e-13). Investigate anything larger even if it is within tolerance
+- Regenerate the baseline (`python -m tests.generate_baseline`) only for a deliberate, approved numerical change, and say so in the commit message
+- When an output variable is removed on purpose, add it to `REMOVED_OUTPUT_KEYS` in `tests/regression_cases.py`
+- New model options or code paths get a test case (a config in `tests/cases/` plus an entry in `tests/regression_cases.py`). `generate_baseline` regenerates every case, so add cases only while the existing ones show zero difference, then regenerate
 
 ## File Creation Rules
 - **Unix line endings only**: All files created must use `\n` (LF), never `\r\n` (CRLF). After creating any file with the Write tool, always verify with `xxd <file> | head -3` and fix with `tr -d '\r' < file > /tmp/fix.tmp && mv /tmp/fix.tmp file` if `0d0a` appears.

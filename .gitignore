@@ -16,3 +16,6 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local run outputs (the reference runs are in data/output/prod_s/)
+data/output/prod/

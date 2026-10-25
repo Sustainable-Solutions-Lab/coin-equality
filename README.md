@@ -26,6 +26,7 @@ This repository accompanies the manuscript:
    - [Policy Configuration](#policy-configuration)
    - [Tax Policy: Continuous Equity Knob](#tax-policy-continuous-equity-knob)
 - [Output Files](#output-files)
+- [Testing](#testing)
 - [Project Structure](#project-structure)
 - [License](#license)
 - [Authors](#authors)
@@ -76,6 +77,8 @@ python scripts/run_optimization.py data/output/prod_s/9cases_s/9cases_s_gid-1_20
 
 The first argument is the configuration file (stored inside each run directory alongside the results; the example above is the base case τ=0, β=0). The second argument names the output subfolder: results are written to `data/output/prod/{category}/{run_name}_YYYYMMDD-HHMMSS/`.
 
+Any configuration value can be overridden on the command line with `--section.key value`, e.g. `--scalar_parameters.rho 0.02` or `--optimization_parameters.controls.f.n_points_final 12`. The configuration written to the run directory includes the overrides.
+
 This finds the optimal time trajectories of f(t) = log₁₀(optimal carbon price) and s(t) = savings rate that maximize the discounted time-integral of aggregate utility.
 
 ### Running a Forward Integration
@@ -85,6 +88,14 @@ Run a forward integration using control trajectories from an optimization result
 ```bash
 python scripts/run_integration.py data/output/prod/{category}/{run_name}_YYYYMMDD-HHMMSS/
 ```
+
+or with the optimized controls held constant at their initial guesses:
+
+```bash
+python scripts/run_integration.py path/to/config.json
+```
+
+Results are written to `data/output/prod/integration/`.
 
 ## Analyzing Results
 
@@ -244,12 +255,13 @@ is a pure consumption-inequality index. The correction is therefore **zero when 
 
 All model parameters are specified in JSON configuration files. See `data/output/prod_s/9cases_s/9cases_s_gid-1_20260709_231226/9cases_s_gid-1.json` for a current example (base case: τ=0, β=0).
 
-Key configuration sections:
-- `scalar_parameters` - Time-invariant constants (α, δ, η, ρ, etc.)
-- `time_functions` - Time-dependent functions (A(t), L(t), σ(t), θ₁(t), gini(t), emission_ratio(t), Eland(t), etc.)
-- `control_function` - Carbon pricing policy f(t) = log₁₀(optimal carbon price)
-- `integration_parameters` - Time span and step size
-- `optimization_parameters` - Optimization settings
+Key configuration sections (every field is required; keys starting with `_` are comments):
+- `scalar_parameters` - Time-invariant constants (α, δ, η, ρ, τ, β, etc.)
+- `time_functions` - Time-dependent functions (A(t), L(t), σ(t), θ₁(t), gini(t), emission_ratio(t), Eland(t), and s(t) when the savings rate is prescribed)
+- `integration_parameters` - Time span, step size and number of quadrature points
+- `optimization_parameters` - Refinement iterations, evaluation budgets, NLopt algorithm and tolerances, and `controls`: one entry per optimized control, `f` (log₁₀ carbon price) and, for a free savings rate, `s`, each with `initial_guess`, `bounds`, `n_points_initial` and `n_points_final`. Without an `s` entry the savings rate follows `time_functions.s`.
+
+The temperature impulse-response coefficients and the 2020 climate state are fixed constants in `src/constants.py`.
 
 #### Time Functions
 
@@ -321,16 +333,36 @@ At `η = 1`, `η_eff = 1` for any `tax_equity` and the knob is degenerate — th
 
 ### Output Files
 
-Each run creates a timestamped directory:
+Each optimization run creates a timestamped directory:
 ```
-./data/output/{run_name}_YYYYMMDD_HHMMSS/
-├── {run_name}.json                      # Configuration used for the run
-├── {run_name}_results.csv               # Complete time series data
-├── {run_name}_optimization_summary.csv  # Optimizer convergence summary
-├── {run_name}_distributions.xlsx        # Income/consumption distribution output
-├── run_status.csv                       # Run status metadata
-└── terminal_output.txt                  # Console output
+./data/output/prod/{category}/{run_name}_YYYYMMDD-HHMMSS/
+├── {config file name}.json                        # Configuration run (with command-line overrides)
+├── {run_name}_optimization_results.csv            # Time series of all variables
+├── {run_name}_optimization_distributions.xlsx     # Per-quantile income, damage, utility, tax rates
+├── {run_name}_optimization_plots.pdf              # Grouped plots, whole run
+├── {run_name}_optimization_plots_2025-2100.pdf    # Grouped plots, 2025-2100
+├── plots_full.pdf                                 # One variable per panel
+├── {run_name}_optimization_summary.csv            # Optimal controls and convergence by iteration
+└── terminal_output.txt                            # Console output
 ```
+
+The stored reference runs in `data/output/prod_s/9cases_s/` were written by the batch driver used for the manuscript, which named the files `{run_name}_results.csv` etc. and also wrote `run_status.csv`.
+
+## Testing
+
+A regression suite checks that code changes do not change results:
+
+```bash
+pytest
+```
+
+It takes about a minute and compares the current code against a golden baseline (`tests/baseline/`) generated from the code before the 2026 cleanup:
+- forward integrations replaying the nine reference runs with their stored optimal controls, also compared with the published `data/output/prod_s/9cases_s/*_results.csv`
+- forward integrations of model options not used in the manuscript (Pareto Lorenz curve, income-dependent aggregate damage, η = 1, η < 1 with high τ, emission and consumption pulses, other time-function types)
+- short optimizations (full horizon with few control points, a 50-year horizon run to convergence, prescribed savings with explicit control years)
+- numerical kernels, the results-CSV format, loading of every configuration, and an end-to-end run of both scripts
+
+Tolerances are relative to each variable's magnitude: 1e-12 without iterative solves, 1e-9 (the tax root-solve tolerance) with them. The terminal summary lists the largest difference per case. The baseline is regenerated (`python -m tests.generate_baseline`) only for a deliberate numerical change.
 
 ## Project Structure
 
@@ -340,13 +372,14 @@ coin-equality/
 ├── LICENSE                            # MIT (code); data files CC-BY-4.0
 ├── requirements.txt                   # Python dependencies
 ├── src/                               # Core library modules
-│   ├── constants.py                   # Numerical constants and tolerances
-│   ├── parameters.py                  # Parameter definitions and configuration
-│   ├── distribution_utilities.py      # Income distribution and utility integration
-│   ├── economic_model.py              # Economic production and tendencies
-│   ├── optimization.py                # Optimization framework
-│   ├── output.py                      # Output generation (CSV and PDF)
-│   └── visualization_utils.py         # Unified visualization functions
+│   ├── constants.py                   # Physical constants, numerical tolerances and bounds
+│   ├── parameters.py                  # Configuration dataclasses, time functions, loading
+│   ├── config_cli.py                  # Command-line configuration overrides
+│   ├── distribution_utilities.py      # Lorenz curves, quadrature grid, progressive tax
+│   ├── economic_model.py              # Tendencies and forward (Euler) integration
+│   ├── optimization.py                # Control trajectories and iterative-refinement optimization
+│   ├── output.py                      # Output files (CSV, xlsx, summary, config)
+│   └── visualization_utils.py         # PDF reports
 ├── scripts/
 │   ├── run_optimization.py            # Main optimization script
 │   ├── run_integration.py             # Forward integration from optimization results
@@ -368,7 +401,8 @@ coin-equality/
 │   │   └── figures/                   # Final manuscript figure PDFs
 │   └── si_datafiles/                  # Per-figure data files (xlsx)
 ├── outputs/audits/                    # Fig 5 dataset + SI Fig 3 cached extractions
-└── parameter_estimation/              # Offline data-fitting for model constants
+├── parameter_estimation/              # Offline data-fitting for model constants
+└── tests/                             # Regression suite: cases, golden baseline, tests
 ```
 
 ## License
