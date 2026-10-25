@@ -97,7 +97,6 @@ def apply_config_override(config_dict, key_path, value):
         raise ValueError(f"Cannot convert '{value}' to type {type(existing_value).__name__} for key '{key_path}': {e}")
 
     current[final_key] = converted_value
-    print(f"Override: {key_path} = {converted_value} (was {existing_value})")
 
 
 def load_config_dict_with_overrides(config_path, overrides):
