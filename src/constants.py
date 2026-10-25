@@ -87,3 +87,17 @@ IMPULSE_RESPONSE_TAU3 = 97.180     # years
 # The constant term equals R_∞ × Ecum_initial, so Ecum_initial = 1.1126 / R_∞
 DELTA_T_HIST_EQUILIBRIUM = 1.1126  # °C
 ECUM_INITIAL = DELTA_T_HIST_EQUILIBRIUM / -(IMPULSE_RESPONSE_A1 + IMPULSE_RESPONSE_A2 + IMPULSE_RESPONSE_A3)
+
+# Control-point grid for the optimizer (see optimization.calculate_control_times)
+# The last WIND_DOWN_EFOLDING_TIMES capital e-folding times (1/delta each) before t_end form
+# the wind-down region, which holds one control point at t_end, or two (t_end - 1/delta and
+# t_end) once the grid has more than MAX_POINTS_WITH_ONE_WIND_DOWN_POINT points. Before the
+# wind-down region, spacing grows geometrically from dt; its growth rate is root-solved
+# within GEOMETRIC_GROWTH_RATE_BRACKET.
+WIND_DOWN_EFOLDING_TIMES = 4.0
+MAX_POINTS_WITH_ONE_WIND_DOWN_POINT = 10
+GEOMETRIC_GROWTH_RATE_BRACKET = (-0.5, 100.0)
+
+# Control points closer in time than this are treated as duplicates (the first is kept)
+# when building PCHIP control trajectories
+CONTROL_TIME_DUPLICATE_TOLERANCE = 1e-10

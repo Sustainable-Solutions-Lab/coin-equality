@@ -38,6 +38,8 @@ from tests.regression_cases import (
     run_optimization_case,
     run_kernels,
     published_results,
+    nine_case_dir,
+    optimization_summary_layout,
     read_results_csv,
     results_csv_header,
 )
@@ -142,7 +144,10 @@ def test_scripts_end_to_end(tmp_path):
     for pattern in ['*_results.csv', '*_distributions.xlsx', '*_optimization_summary.csv', '*.json',
                     '*_plots.pdf', '*_plots_2025-2100.pdf', 'plots_full.pdf', 'terminal_output.txt']:
         assert len(list(optimization_dir.glob(pattern))) == 1, pattern
-    # The configuration written to the output directory records the command-line overrides
+    # Summary layout matches the published summaries; the written configuration records
+    # the command-line overrides
+    assert (optimization_summary_layout(next(optimization_dir.glob('*_optimization_summary.csv')))
+            == optimization_summary_layout(next(nine_case_dir(1).glob('*_optimization_summary.csv'))))
     with open(next(optimization_dir.glob('*.json'))) as f:
         assert json.load(f)['optimization_parameters']['max_evaluations_final'] == 20
 

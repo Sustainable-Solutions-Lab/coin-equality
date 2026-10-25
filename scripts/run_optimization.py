@@ -20,8 +20,8 @@ import pandas as pd
 from pathlib import Path
 from io import StringIO
 from src.config_cli import parse_override_arguments, load_config_dict_with_overrides
-from src.parameters import configuration_from_dict, ModelConfiguration, create_f_and_s_control_from_single
-from src.optimization import UtilityOptimizer, create_control_function_from_points, create_f_and_s_control_function_from_points
+from src.parameters import configuration_from_dict
+from src.optimization import optimize, control_arrays
 from src.economic_model import integrate_model, create_derived_variables
 from src.output import save_results, write_optimization_summary, write_config_file, create_output_directory
 from src.visualization_utils import create_results_report_pdf
@@ -98,38 +98,15 @@ def print_header(text):
     print(f"{'=' * 80}\n")
 
 
-def print_optimization_results(opt_results, n_control_points, t_base=0.0):
-    """Print formatted optimization results.
-
-    Parameters
-    ----------
-    opt_results : dict
-        Optimization results dictionary
-    n_control_points : int
-        Number of control points
-    t_base : float
-        Base year for time functions (added to relative times for display)
-    """
-    # Check if s was also optimized
-    has_s_optimization = 's_control_points' in opt_results and opt_results['s_control_points'] is not None
-
-    if n_control_points == 1:
-        print(f"Optimal f₀:             {opt_results['optimal_values'][0]:.6f}")
-        if has_s_optimization:
-            print(f"Optimal s₀:             {opt_results['s_optimal_values'][0]:.6f}")
-    else:
-        print(f"Optimal f control values:")
-        for t_rel, f_val in opt_results['control_points']:
-            print(f"  t={t_rel + t_base:6.1f} yr: f={f_val:.6f}")
-
-        if has_s_optimization:
-            print(f"\nOptimal s control values:")
-            for t_rel, s_val in opt_results['s_control_points']:
-                print(f"  t={t_rel + t_base:6.1f} yr: s={s_val:.6f}")
-
-    print(f"\nOptimal objective:      {opt_results['optimal_objective']:.6e}")
+def print_optimization_results(opt_results, t_base):
+    """Print the optimized control points (calendar years), objective and evaluations."""
+    for name, (times, values) in opt_results['controls'].items():
+        print(f"Optimal {name} control values:")
+        for t_rel, value in zip(times, values):
+            print(f"  t={t_rel + t_base:6.1f} yr: {name}={value:.6f}")
+        print()
+    print(f"Optimal objective:      {opt_results['objective']:.12e}")
     print(f"Function evaluations:   {opt_results['n_evaluations']}")
-    print(f"Status:                 {opt_results['status']}")
 
 
 def main():
@@ -197,82 +174,29 @@ def main():
             print(f"  Final s control points: same as f")
         print(f"  Optimizing both f and s: YES")
 
-    optimizer = UtilityOptimizer(config)
-
     print_header("OPTIMIZATION")
+    print(f"Algorithm: {opt_params.algorithm}")
+    for tolerance_name in ['ftol_rel', 'ftol_abs', 'xtol_rel', 'xtol_abs']:
+        if getattr(opt_params, tolerance_name) is not None:
+            print(f"{tolerance_name}: {getattr(opt_params, tolerance_name)}")
 
-    algorithm = opt_params.algorithm if opt_params.algorithm is not None else 'LN_SBPLX'
-    print(f"Algorithm: {algorithm}")
-
-    if opt_params.ftol_rel is not None:
-        print(f"ftol_rel: {opt_params.ftol_rel}")
-    if opt_params.ftol_abs is not None:
-        print(f"ftol_abs: {opt_params.ftol_abs}")
-    if opt_params.xtol_rel is not None:
-        print(f"xtol_rel: {opt_params.xtol_rel}")
-    if opt_params.xtol_abs is not None:
-        print(f"xtol_abs: {opt_params.xtol_abs}")
-
-    print(f"\nRunning {algorithm} optimization...\n")
-
-    opt_results = optimizer.optimize_with_iterative_refinement(
-        n_iterations=opt_params.optimization_iterations,
-        initial_guess_scalar=opt_params.initial_guess_f,
-        max_evaluations_initial=opt_params.max_evaluations_initial,
-        max_evaluations_final=opt_params.max_evaluations_final,
-        algorithm=opt_params.algorithm,
-        ftol_rel=opt_params.ftol_rel,
-        ftol_abs=opt_params.ftol_abs,
-        xtol_rel=opt_params.xtol_rel,
-        xtol_abs=opt_params.xtol_abs,
-        n_points_final=opt_params.n_points_final_f,
-        n_points_initial=opt_params.n_points_initial_f,
-        initial_guess_s_scalar=opt_params.initial_guess_s,
-        n_points_final_s=opt_params.n_points_final_s,
-        n_points_initial_s=opt_params.n_points_initial_s
-    )
-    n_final_control_points = len(opt_results['control_points'])
-
+    opt_results = optimize(config)
     t_base = config.scalar_params.t_base
-    print_optimization_results(opt_results, n_final_control_points, t_base)
+    print_optimization_results(opt_results, t_base)
 
     print_header("SAVING RESULTS")
-
-    # Create control function from optimization results
-    if 's_control_points' in opt_results:
-        # Both f and s were optimized
-        control_func = create_f_and_s_control_function_from_points(
-            opt_results['control_points'],
-            opt_results['s_control_points']
-        )
-    else:
-        # Only f was optimized; s follows its prescribed time function
-        f_control = create_control_function_from_points(opt_results['control_points'])
-        control_func = create_f_and_s_control_from_single(f_control, config.time_functions['s'])
-
-    optimal_config = ModelConfiguration(
-        run_name=f"{config.run_name}_optimization",
-        scalar_params=config.scalar_params,
-        time_functions=config.time_functions,
-        integration_params=config.integration_params,
-        optimization_params=config.optimization_params,
-        control_function=control_func
-    )
-
     print("Running forward model with optimal control...")
-    optimal_results = integrate_model(optimal_config)
-    optimal_results = create_derived_variables(optimal_results)
+    f_values, s_values = control_arrays(config, opt_results['controls'])
+    optimal_results = create_derived_variables(integrate_model(config, f_values, s_values))
 
     print("\nSaving integration results (CSV and PDF)...")
-    # Pass the pre-created output_dir to save_results
     config_filename_base = os.path.basename(config_path)
-    output_paths = save_results(optimal_results, optimal_config.run_name, prod_category, output_dir=output_dir, config_filename=config_filename_base)
-
+    output_paths = save_results(optimal_results, f"{config.run_name}_optimization", prod_category,
+                                output_dir=output_dir, config_filename=config_filename_base)
     print(f"  Output directory: {output_paths['output_dir']}")
     print(f"  Results CSV:      {output_paths['csv_file']}")
     print(f"  Results PDF:      {output_paths['pdf_file']}")
-    if 'pdf_file_short' in output_paths:
-        print(f"  Short-term PDF:   {output_paths['pdf_file_short']}")
+    print(f"  2025-2100 PDF:    {output_paths['pdf_file_2025_2100']}")
 
     # Create comprehensive results visualization using unified plotting
     print("\nCreating comprehensive results visualization...")
@@ -293,21 +217,13 @@ def main():
     print(f"Iterative refinement optimization complete:")
     print(f"  Iterations performed: {opt_results['n_iterations']}")
     print(f"  Total evaluations: {opt_results['n_evaluations']}")
-    print(f"  Final control points: {n_final_control_points}")
-    print(f"\nOptimal objective value: {opt_results['optimal_objective']:.12e}")
     print(f"\nIteration history:")
     for iter_result in opt_results['iteration_history']:
-        print(f"  Iteration {iter_result['iteration']:2d}: {iter_result['n_control_points']:3d} points, "
-              f"objective = {iter_result['optimal_objective']:.6e}, "
-              f"evals = {iter_result['n_evaluations']}")
-    print(f"\nFinal control trajectory (f - log10 of MAC):")
-    for t_rel, f_val in opt_results['control_points']:
-        print(f"  t={t_rel + t_base:6.1f} yr: f={f_val:.6f}")
-
-    if 's_control_points' in opt_results:
-        print(f"\nFinal control trajectory (s - savings rate):")
-        for t_rel, s_val in opt_results['s_control_points']:
-            print(f"  t={t_rel + t_base:6.1f} yr: s={s_val:.6f}")
+        print(f"  Iteration {iter_result['iteration']:2d}: {len(iter_result['controls']['f'][0]):3d} points, "
+              f"objective = {iter_result['objective']:.12e}, "
+              f"evals = {iter_result['n_evaluations']}, {iter_result['termination_name']}")
+    print()
+    print_optimization_results(opt_results, t_base)
 
     print(f"\nAll results saved to: {output_dir}")
 

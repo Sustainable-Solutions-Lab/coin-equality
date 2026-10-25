@@ -186,32 +186,6 @@ def create_gompertz_growth(initial_value, final_value, adjustment_coefficient):
 
 
 # =============================================================================
-# Control Functions for f and s (for simultaneous optimization of f and s)
-# =============================================================================
-
-def create_f_and_s_control_from_single(f_control, s_time_function):
-    """
-    Create a control function for both f and s from separate f control and s time function.
-
-    This is used during Phase 2 transition to allow f to be optimized while
-    s follows a prescribed time function.
-
-    Parameters
-    ----------
-    f_control : callable
-        Single control function f(t) returning scalar
-    s_time_function : callable
-        Time function s(t) returning scalar
-
-    Returns
-    -------
-    callable
-        Control function returning tuple (f, s)
-    """
-    return lambda t: (f_control(t), s_time_function(t))
-
-
-# =============================================================================
 # Parameter Dataclasses
 # =============================================================================
 
@@ -512,15 +486,15 @@ class ModelConfiguration:
         Integration control parameters
     optimization_params : OptimizationParameters
         Optimization control parameters
-    control_function : callable
-        Control function f(t) returning log10 of marginal abatement cost ($/tCO2)
+
+    The controls f(t) and s(t) are not part of the configuration; they are passed to
+    integrate_model as arrays on the integration time grid.
     """
     run_name: str
     scalar_params: ScalarParameters
     time_functions: dict
     integration_params: IntegrationParameters
     optimization_params: OptimizationParameters
-    control_function: callable
 
 
 # =============================================================================
@@ -548,16 +522,12 @@ def evaluate_params_at_time(t, config):
         with keys matching those expected by calculate_tendencies():
         'alpha', 'delta', 'psi1', 'psi2', 'y_damage_distribution_exponent', 'y_net_reference',
         'eta', 'rho', 'gini', 'theta2', 'mu_max', 'impulse_response_a1/a2/a3/tau1/tau2/tau3',
-        'A', 'L', 'sigma', 'theta1', 'f', 's'
+        'A', 'L', 'sigma', 'theta1'. The controls f and s are added by integrate_model.
 
     Notes
     -----
-    The control function now returns a tuple (f, s) where both f and s can be
-    optimized or prescribed. This enables dual optimization of abatement allocation
-    and savings rate.
-
-    Time functions and control functions receive relative time (t - t_base) so they
-    can be parameterized for relative time where 0 = base year (default 2020).
+    Time functions receive relative time (t - t_base) so they can be parameterized
+    for relative time where 0 = base year.
     """
     sp = config.scalar_params
     tf = config.time_functions
@@ -618,11 +588,6 @@ def evaluate_params_at_time(t, config):
     params['year_extra_consumption'] = sp.year_extra_consumption
     params['amount_extra_consumption'] = sp.amount_extra_consumption
     params['loose_epsilon'] = sp.loose_epsilon
-
-    # Dual control function evaluation returns (f, s) - uses relative time
-    f, s = config.control_function(t_relative)
-    params['f'] = f
-    params['s'] = s
 
     return params
 
@@ -753,19 +718,10 @@ def configuration_from_dict(config_data):
     optimization_params_data = _filter_description_keys(config_data['optimization_parameters'])
     optimization_params = OptimizationParameters(**optimization_params_data)
 
-    # Placeholder control function (f, s): f is the constant initial guess. Optimization and
-    # forward-integration scripts replace it with the trajectory they integrate.
-    f_control = lambda t: optimization_params.initial_guess_f if isinstance(optimization_params.initial_guess_f, float) else optimization_params.initial_guess_f[0]
-
-    if 's' in time_functions:
-        s_time_function = time_functions['s']
-    else:
+    if 's' not in time_functions:
         # Use initial_guess_s as default constant s function
         initial_s = optimization_params.initial_guess_s if optimization_params.initial_guess_s is not None else 0.24
-        s_time_function = lambda t: initial_s if isinstance(initial_s, float) else initial_s[0]
-        time_functions['s'] = s_time_function
-
-    control_function = create_f_and_s_control_from_single(f_control, s_time_function)
+        time_functions['s'] = lambda t: initial_s if isinstance(initial_s, float) else initial_s[0]
 
     # Extract run name
     run_name = config_data['run_name']
@@ -776,5 +732,4 @@ def configuration_from_dict(config_data):
         time_functions=time_functions,
         integration_params=integration_params,
         optimization_params=optimization_params,
-        control_function=control_function,
     )

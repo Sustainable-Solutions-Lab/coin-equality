@@ -469,7 +469,13 @@ def calculate_tendencies(state, params,
     return results
 
 
-def integrate_model(config, store_detailed_output=True):
+def time_grid(integration_params):
+    """Calendar times of the Euler integration steps, t_start to t_end inclusive."""
+    return np.arange(integration_params.t_start, integration_params.t_end + integration_params.dt,
+                     integration_params.dt)
+
+
+def integrate_model(config, f_values, s_values, store_detailed_output=True):
     """
     Integrate the model forward in time using Euler's method.
 
@@ -477,6 +483,10 @@ def integrate_model(config, store_detailed_output=True):
     ----------
     config : ModelConfiguration
         Complete model configuration including parameters and time-dependent functions
+    f_values : np.ndarray
+        Control f = log10(marginal abatement cost) at each time of time_grid(config.integration_params)
+    s_values : np.ndarray
+        Savings rate at each time of time_grid(config.integration_params)
     store_detailed_output : bool, optional
         If True (default), stores all diagnostic variables for CSV/PDF output.
         If False, stores only t, U needed for optimization objective calculation.
@@ -507,14 +517,10 @@ def integrate_model(config, store_detailed_output=True):
     - Ecum(0) = Ecum_initial (initial cumulative emissions from configuration)
     - K(0) = K_initial (from configuration)
     """
-    # Extract integration parameters
-    t_start = config.integration_params.t_start
-    t_end = config.integration_params.t_end
     dt = config.integration_params.dt
     n_quad = config.integration_params.n_quad
 
-    # Create time array
-    t_array = np.arange(t_start, t_end + dt, dt)
+    t_array = time_grid(config.integration_params)
     n_steps = len(t_array)
 
     # Precompute Gauss-Legendre quadrature nodes and weights (used for all timesteps)
@@ -607,6 +613,8 @@ def integrate_model(config, store_detailed_output=True):
     for i, t in enumerate(t_array):
         # Evaluate time-dependent parameters at current time
         params = evaluate_params_at_time(t, config)
+        params['f'] = f_values[i]
+        params['s'] = s_values[i]
 
         # Pass dt for extra emission pulse timing
         params['dt'] = dt

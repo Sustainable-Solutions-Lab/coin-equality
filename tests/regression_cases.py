@@ -25,21 +25,16 @@ the Brent solve for the tax parameter: that solve converges only to xtol = loose
 expected to stay far below these bounds; the test report prints the actual differences.
 """
 
+import csv
+import re
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy.special import roots_legendre
 
-from src.parameters import load_configuration, ModelConfiguration, create_f_and_s_control_from_single
-from src.economic_model import integrate_model, create_derived_variables
-from src.optimization import (
-    UtilityOptimizer,
-    calculate_control_times,
-    evaluate_control_function,
-    interpolate_to_new_grid,
-    create_control_function_from_points,
-    create_f_and_s_control_function_from_points,
-)
+from src.parameters import load_configuration
+from src.economic_model import integrate_model, create_derived_variables, time_grid
+from src.optimization import optimize, control_arrays, control_trajectory, calculate_control_times
 from src.distribution_utilities import (
     find_log_deltaU_equal_utility,
     compute_post_tax_income_equal_utility,
@@ -47,7 +42,6 @@ from src.distribution_utilities import (
     L_empirical_lorenz_derivative,
 )
 from src.output import write_results_csv
-from src.constants import OBJECTIVE_SCALE
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -122,13 +116,6 @@ def stored_controls(gid):
     return df['t'].values, df['f'].values, df['s'].values
 
 
-def grid_control_function(t_grid, f_values, s_values, t_base):
-    """Control function returning the stored (f, s) exactly at the integration grid times."""
-    f_by_t = dict(zip(t_grid, f_values))
-    s_by_t = dict(zip(t_grid, s_values))
-    return lambda t_relative: (f_by_t[t_relative + t_base], s_by_t[t_relative + t_base])
-
-
 def array_outputs(results):
     return {key: np.asarray(value) for key, value in results.items() if isinstance(value, np.ndarray)}
 
@@ -163,20 +150,28 @@ def run_forward_results(case_name):
     case = FORWARD_CASES[case_name]
     config = load_configuration(str(case['config_path']()))
     t_grid, f_values, s_values = stored_controls(case['controls_gid'])
-    control_function = grid_control_function(t_grid, f_values, s_values, config.scalar_params.t_base)
-    forward_config = ModelConfiguration(
-        run_name=config.run_name,
-        scalar_params=config.scalar_params,
-        time_functions=config.time_functions,
-        integration_params=config.integration_params,
-        optimization_params=config.optimization_params,
-        control_function=control_function,
-    )
-    return create_derived_variables(integrate_model(forward_config))
+    assert np.array_equal(t_grid, time_grid(config.integration_params))
+    return create_derived_variables(integrate_model(config, f_values, s_values))
 
 
 def run_forward_case(case_name):
     return array_outputs(run_forward_results(case_name))
+
+
+def optimization_summary_layout(summary_path):
+    """
+    Section titles and parameter names of an optimization summary CSV, values dropped.
+
+    Numbers inside parameter names (control point indices) are replaced by N and
+    repeated names collapsed, so runs with different numbers of control points compare.
+    """
+    with open(summary_path, newline='') as f:
+        rows = [row for row in csv.reader(f) if row]
+    sections = [row[0] for row in rows if len(row) == 1]
+    start = rows.index(['Parameter', 'Value']) + 1
+    end = next(i for i in range(start, len(rows)) if len(rows[i]) == 1)
+    parameters = list(dict.fromkeys(re.sub(r'\d+', 'N', row[0]) for row in rows[start:end]))
+    return sections, parameters
 
 
 def results_csv_header(results, output_dir):
@@ -198,64 +193,22 @@ OPTIMIZATION_CASES = {
 }
 
 
-def run_optimization(config):
-    """Run iterative-refinement optimization exactly as scripts/run_optimization.py does."""
-    opt_params = config.optimization_params
-    optimizer = UtilityOptimizer(config)
-    return optimizer.optimize_with_iterative_refinement(
-        n_iterations=opt_params.optimization_iterations,
-        initial_guess_scalar=opt_params.initial_guess_f,
-        max_evaluations_initial=opt_params.max_evaluations_initial,
-        max_evaluations_final=opt_params.max_evaluations_final,
-        algorithm=opt_params.algorithm,
-        ftol_rel=opt_params.ftol_rel,
-        ftol_abs=opt_params.ftol_abs,
-        xtol_rel=opt_params.xtol_rel,
-        xtol_abs=opt_params.xtol_abs,
-        n_points_final=opt_params.n_points_final_f,
-        n_points_initial=opt_params.n_points_initial_f,
-        initial_guess_s_scalar=opt_params.initial_guess_s,
-        n_points_final_s=opt_params.n_points_final_s,
-        n_points_initial_s=opt_params.n_points_initial_s,
-    )
-
-
-def optimal_control_function(config, opt_results):
-    """Control function from optimization results, as built in scripts/run_optimization.py."""
-    if 's_control_points' in opt_results:
-        return create_f_and_s_control_function_from_points(opt_results['control_points'],
-                                                           opt_results['s_control_points'])
-    return create_f_and_s_control_from_single(create_control_function_from_points(opt_results['control_points']),
-                                              config.time_functions['s'])
-
-
 def run_optimization_case(case_name, initial_guess_f_perturbation):
     config = load_configuration(str(OPTIMIZATION_CASES[case_name]['config_path']))
     config.optimization_params.initial_guess_f += initial_guess_f_perturbation
-    opt_results = run_optimization(config)
+    opt_results = optimize(config)
 
     outputs = {
-        'f_times': np.array([pt[0] for pt in opt_results['control_points']]),
-        'f_values': np.array([pt[1] for pt in opt_results['control_points']]),
-        'objective': np.array(opt_results['optimal_objective'] / OBJECTIVE_SCALE),
-        'iteration_objectives': np.array([it['optimal_objective'] / OBJECTIVE_SCALE
-                                          for it in opt_results['iteration_history']]),
+        'objective': np.array(opt_results['objective']),
+        'iteration_objectives': np.array([it['objective'] for it in opt_results['iteration_history']]),
         'iteration_evaluations': np.array([it['n_evaluations'] for it in opt_results['iteration_history']]),
         'iteration_termination': np.array([it['termination_name'] for it in opt_results['iteration_history']]),
     }
-    if 's_control_points' in opt_results:
-        outputs['s_times'] = np.array([pt[0] for pt in opt_results['s_control_points']])
-        outputs['s_values'] = np.array([pt[1] for pt in opt_results['s_control_points']])
+    for name, (times, values) in opt_results['controls'].items():
+        outputs[f'{name}_times'] = np.asarray(times)
+        outputs[f'{name}_values'] = np.asarray(values)
 
-    optimal_config = ModelConfiguration(
-        run_name=config.run_name,
-        scalar_params=config.scalar_params,
-        time_functions=config.time_functions,
-        integration_params=config.integration_params,
-        optimization_params=config.optimization_params,
-        control_function=optimal_control_function(config, opt_results),
-    )
-    forward = create_derived_variables(integrate_model(optimal_config))
+    forward = create_derived_variables(integrate_model(config, *control_arrays(config, opt_results['controls'])))
     for key in ['f', 's', 'mu', 'delta_T', 'U', 'y_net']:
         outputs[f'forward_{key}'] = forward[key]
     return outputs
@@ -293,13 +246,14 @@ def run_kernels():
                     use_empirical_lorenz, tol=1e-9, xi=xi, wi=wi))
 
     for n_points, t_end in [(4, 400.0), (6, 400.0), (9, 400.0), (11, 400.0), (15, 400.0), (24, 400.0), (4, 50.0), (6, 50.0)]:
-        times, r0, r1 = calculate_control_times(n_points, 0.0, t_end, 1.0, 0.1)
-        outputs[f'control_times_n{n_points}_T{int(t_end)}'] = np.concatenate([times, [r0, r1]])
+        times, r0 = calculate_control_times(n_points, 0.0, t_end, 1.0, 0.1)
+        # Baseline layout: times, r0, then a segment-2 growth rate that is always 0
+        outputs[f'control_times_n{n_points}_T{int(t_end)}'] = np.concatenate([times, [r0, 0.0]])
 
     old_times = np.array([0.0, 1.0, 360.0, 400.0])
     old_values = np.array([1.2, 1.5, 3.1, 0.0])
-    new_times, _, _ = calculate_control_times(6, 0.0, 400.0, 1.0, 0.1)
-    outputs['interpolate_to_new_grid'] = interpolate_to_new_grid(old_times, old_values, new_times)
-    outputs['evaluate_control_function'] = evaluate_control_function(list(zip(old_times, old_values)),
-                                                                     np.arange(0.0, 401.0, 1.0))
+    new_times, _ = calculate_control_times(6, 0.0, 400.0, 1.0, 0.1)
+    # Baseline keys name the two functions control_trajectory replaced
+    outputs['interpolate_to_new_grid'] = control_trajectory(old_times, old_values, new_times)
+    outputs['evaluate_control_function'] = control_trajectory(old_times, old_values, np.arange(0.0, 401.0, 1.0))
     return outputs

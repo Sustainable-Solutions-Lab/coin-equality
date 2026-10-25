@@ -159,7 +159,7 @@ def write_optimization_summary(opt_results, output_dir, run_name, filename='opti
     Parameters
     ----------
     opt_results : dict
-        Optimization results from UtilityOptimizer
+        Results of optimization.optimize
     output_dir : str
         Directory to write CSV file
     run_name : str
@@ -176,14 +176,13 @@ def write_optimization_summary(opt_results, output_dir, run_name, filename='opti
 
     Notes
     -----
-    Creates a CSV file with optimization statistics including:
-    - Optimal control point values
-    - Objective function value
-    - Number of function evaluations
-    - Convergence status
-    - Iteration-by-iteration results (for iterative refinement mode)
+    Sections: final control values and objective (unscaled discounted utility), final
+    f(t) and s(t) control points in calendar years, and per refinement iteration the
+    objective, evaluations and termination reason, the f values, and the f control times.
     """
     csv_path = os.path.join(output_dir, f"{run_name}_{filename}")
+    controls = opt_results['controls']
+    history = opt_results['iteration_history']
 
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -191,95 +190,46 @@ def write_optimization_summary(opt_results, output_dir, run_name, filename='opti
         writer.writerow([])
 
         writer.writerow(['Parameter', 'Value'])
-
-        # Check if this is dual optimization (has s values)
-        is_dual = 's_optimal_values' in opt_results and opt_results['s_optimal_values'] is not None
-
-        # Write optimal f values
-        for i, val in enumerate(opt_results['optimal_values']):
-            writer.writerow([f'Optimal f value at control point {i}', f"{val:.6f}"])
-
-        # Write optimal s values if dual optimization
-        if is_dual:
-            for i, val in enumerate(opt_results['s_optimal_values']):
-                writer.writerow([f'Optimal s value at control point {i}', f"{val:.6f}"])
-
-        writer.writerow(['Optimal objective', f"{opt_results['optimal_objective']:.12e}"])
+        for name, (_, values) in controls.items():
+            for i, val in enumerate(values):
+                writer.writerow([f'Optimal {name} value at control point {i}', f"{val:.6f}"])
+        writer.writerow(['Optimal objective', f"{opt_results['objective']:.12e}"])
         writer.writerow(['Function evaluations', opt_results['n_evaluations']])
-        writer.writerow(['Status', opt_results['status']])
+        writer.writerow(['Status', 'success'])
+        writer.writerow(['Algorithm', opt_results['algorithm']])
+        writer.writerow(['Number of iterations', opt_results['n_iterations']])
 
-        if 'algorithm' in opt_results:
-            writer.writerow(['Algorithm', opt_results['algorithm']])
-        if 'n_iterations' in opt_results:
-            writer.writerow(['Number of iterations', opt_results['n_iterations']])
-        if 'termination_name' in opt_results:
-            writer.writerow(['Termination reason', opt_results['termination_name']])
-        if 'termination_code' in opt_results and opt_results['termination_code'] is not None:
-            writer.writerow(['Termination code', opt_results['termination_code']])
-
-        writer.writerow([])
-
-        # Write final control points for f (times converted to calendar years)
-        writer.writerow(['Final f(t) Control Points'])
-        writer.writerow(['Time', 'f Value'])
-        for t_rel, value in opt_results['control_points']:
-            writer.writerow([f"{t_rel + t_base:.2f}", f"{value:.6f}"])
-
-        # Write final control points for s if dual optimization
-        if is_dual and 's_control_points' in opt_results:
+        for name, (times, values) in controls.items():
             writer.writerow([])
-            writer.writerow(['Final s(t) Control Points'])
-            writer.writerow(['Time', 's Value'])
-            for t_rel, value in opt_results['s_control_points']:
+            writer.writerow([f'Final {name}(t) Control Points'])
+            writer.writerow(['Time', f'{name} Value'])
+            for t_rel, value in zip(times, values):
                 writer.writerow([f"{t_rel + t_base:.2f}", f"{value:.6f}"])
 
-        if 'iteration_history' in opt_results:
+        writer.writerow([])
+        writer.writerow(['Iterative Refinement - Iteration History'])
+        writer.writerow(['Iteration', 'Control_Points', 'Objective', 'Evaluations', 'Status'])
+        for iter_result in history:
+            writer.writerow([
+                iter_result['iteration'],
+                len(iter_result['controls']['f'][0]),
+                f"{iter_result['objective']:.12e}",
+                iter_result['n_evaluations'],
+                iter_result['termination_name'],
+            ])
+
+        max_points = max(len(iter_result['controls']['f'][0]) for iter_result in history)
+        for title, column_prefix, column_index, formatter in [
+                ('Control Values by Iteration', 'f', 1, lambda value: f"{value:.6f}"),
+                ('Control Times by Iteration', 't', 0, lambda t_rel: f"{t_rel + t_base:.2f}")]:
             writer.writerow([])
-            writer.writerow(['Iterative Refinement - Iteration History'])
-            writer.writerow(['Iteration', 'Control_Points', 'Objective', 'Evaluations', 'Status'])
-            for iter_result in opt_results['iteration_history']:
-                writer.writerow([
-                    iter_result['iteration'],
-                    iter_result['n_control_points'],
-                    f"{iter_result['optimal_objective']:.12e}",
-                    iter_result['n_evaluations'],
-                    iter_result['termination_name']
-                ])
-
-            writer.writerow([])
-            writer.writerow(['Iterative Refinement - Control Values by Iteration'])
-
-            max_points = max(iter_result['n_control_points'] for iter_result in opt_results['iteration_history'])
-            header = ['Iteration', 'Control_Points'] + [f'f_{i}' for i in range(max_points)]
-            writer.writerow(header)
-
-            for iter_result in opt_results['iteration_history']:
-                row = [
-                    iter_result['iteration'],
-                    iter_result['n_control_points']
-                ]
-                for val in iter_result['optimal_values']:
-                    row.append(f"{val:.6f}")
-                for _ in range(max_points - len(iter_result['optimal_values'])):
-                    row.append('')
-                writer.writerow(row)
-
-            writer.writerow([])
-            writer.writerow(['Iterative Refinement - Control Times by Iteration'])
-            header = ['Iteration', 'Control_Points'] + [f't_{i}' for i in range(max_points)]
-            writer.writerow(header)
-
-            for i, iter_result in enumerate(opt_results['iteration_history']):
-                control_times = opt_results['iteration_control_grids'][i]
-                row = [
-                    iter_result['iteration'],
-                    iter_result['n_control_points']
-                ]
-                for t_rel in control_times:
-                    row.append(f"{t_rel + t_base:.2f}")
-                for _ in range(max_points - len(control_times)):
-                    row.append('')
-                writer.writerow(row)
+            writer.writerow([f'Iterative Refinement - {title}'])
+            writer.writerow(['Iteration', 'Control_Points'] + [f'{column_prefix}_{i}' for i in range(max_points)])
+            for iter_result in history:
+                entries = iter_result['controls']['f'][column_index]
+                writer.writerow([iter_result['iteration'], len(entries)]
+                                + [formatter(entry) for entry in entries]
+                                + [''] * (max_points - len(entries)))
 
     return csv_path
 

@@ -36,8 +36,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from src.config_cli import parse_override_arguments, load_config_dict_with_overrides
-from src.parameters import configuration_from_dict, ModelConfiguration
-from src.economic_model import integrate_model, create_derived_variables
+from src.parameters import configuration_from_dict
+from src.economic_model import integrate_model, create_derived_variables, time_grid
 from src.output import save_results
 from scipy.interpolate import PchipInterpolator
 
@@ -86,34 +86,10 @@ Common overrides:
     return args.input_path, parse_override_arguments(unknown)
 
 
-def create_constant_control_function(initial_f, initial_s, bounds_f, bounds_s):
-    """
-    Create a control function that returns constant values.
-
-    Parameters
-    ----------
-    initial_f : float
-        Constant value for f (log10(MAC) for MAC-based optimization)
-    initial_s : float
-        Constant value for s (savings rate)
-    bounds_f : list
-        [min, max] bounds for f
-    bounds_s : list
-        [min, max] bounds for s
-
-    Returns
-    -------
-    callable
-        Control function f,s = control(t)
-    """
-    # Clip to bounds
-    f_value = np.clip(initial_f, bounds_f[0], bounds_f[1])
-    s_value = np.clip(initial_s, bounds_s[0], bounds_s[1])
-
-    def control_function(t):
-        return f_value, s_value
-
-    return control_function
+def constant_control_arrays(initial_f, initial_s, bounds_f, bounds_s, n_steps):
+    """Constant f and s (clipped to their bounds) at each of n_steps integration times."""
+    return (np.full(n_steps, np.clip(initial_f, bounds_f[0], bounds_f[1])),
+            np.full(n_steps, np.clip(initial_s, bounds_s[0], bounds_s[1])))
 
 
 def load_control_trajectory_from_csv(csv_path):
@@ -142,37 +118,28 @@ def load_control_trajectory_from_csv(csv_path):
     return t_values, f_values, s_values
 
 
-def create_control_function_from_csv(t_values, f_values, s_values, bounds_f, bounds_s):
+def control_arrays_from_csv(t_values, f_values, s_values, t_grid, bounds_f, bounds_s):
     """
-    Create control function from CSV data using PCHIP interpolation.
+    f and s on the integration grid from a results CSV, by PCHIP interpolation.
 
     Parameters
     ----------
-    t_values : array
-        Time points relative to t_base (control functions receive t - t_base)
-    f_values : array
-        Control variable f values (log10(MAC) for MAC-based optimization)
-    s_values : array
-        Savings rate values
-    bounds_f : list
-        [min, max] bounds for f
-    bounds_s : list
-        [min, max] bounds for s
+    t_values, f_values, s_values : array
+        Calendar years and control values from the CSV
+    t_grid : array
+        Calendar years of the integration time steps
+    bounds_f, bounds_s : list
+        [min, max] bounds the interpolated values are clipped to
 
     Returns
     -------
-    callable
-        Control function f,s = control(t)
+    tuple of ndarray
+        (f, s) at the times t_grid
     """
     f_interpolator = PchipInterpolator(t_values, f_values, extrapolate=True)
     s_interpolator = PchipInterpolator(t_values, s_values, extrapolate=True)
-
-    def control_function(t):
-        f = f_interpolator(t)
-        s = s_interpolator(t)
-        return np.clip(f, bounds_f[0], bounds_f[1]), np.clip(s, bounds_s[0], bounds_s[1])
-
-    return control_function
+    return (np.clip(f_interpolator(t_grid), bounds_f[0], bounds_f[1]),
+            np.clip(s_interpolator(t_grid), bounds_s[0], bounds_s[1]))
 
 
 def find_files_in_output_dir(output_dir):
@@ -280,8 +247,8 @@ def main():
         print(f'  bounds_f: {bounds_f}')
         print(f'  bounds_s: {bounds_s}')
 
-        print(f'\nCreating constant control function...')
-        control_function = create_constant_control_function(initial_f, initial_s, bounds_f, bounds_s)
+        f_values, s_values = constant_control_arrays(initial_f, initial_s, bounds_f, bounds_s,
+                                                     len(time_grid(config.integration_params)))
     else:
         # Load control trajectories from CSV
         print(f'\nLoading control trajectories from CSV...')
@@ -296,29 +263,17 @@ def main():
         for idx in sample_indices:
             print(f'    t={t_csv[idx]:6.1f} yr: f={f_csv[idx]:.6f}, s={s_csv[idx]:.6f}')
 
-        # Create control function with bounds from config
-        print(f'\nCreating control function using PCHIP interpolation...')
+        # Interpolate onto the integration grid, clipped to the bounds from config
+        print(f'\nInterpolating controls onto the integration grid (PCHIP)...')
         print(f'  bounds_f: {bounds_f}')
         print(f'  bounds_s: {bounds_s}')
-        # The CSV holds calendar years; control functions are evaluated at t - t_base
-        control_function = create_control_function_from_csv(t_csv - config.scalar_params.t_base, f_csv, s_csv,
-                                                             bounds_f, bounds_s)
-
-    # Create new configuration with loaded controls
-    run_suffix = "_const" if is_json_file else "_forward"
-    forward_config = ModelConfiguration(
-        run_name=f"{config.run_name}{run_suffix}",
-        scalar_params=config.scalar_params,
-        time_functions=config.time_functions,
-        integration_params=config.integration_params,
-        optimization_params=config.optimization_params,
-        control_function=control_function
-    )
+        f_values, s_values = control_arrays_from_csv(t_csv, f_csv, s_csv, time_grid(config.integration_params),
+                                                     bounds_f, bounds_s)
 
     # Run integration
     print(f'\nRunning forward integration...')
-    results = integrate_model(forward_config)
-    results = create_derived_variables(results)
+    results = create_derived_variables(integrate_model(config, f_values, s_values))
+    run_name = f"{config.run_name}{'_const' if is_json_file else '_forward'}"
 
     # Display results
     print(f'\nIntegration complete!')
@@ -347,13 +302,12 @@ def main():
     print(f'Saving Results')
     print(f'=' * 80)
     config_filename_base = os.path.basename(config_path)
-    output_paths = save_results(results, forward_config.run_name, 'integration',
+    output_paths = save_results(results, run_name, 'integration',
                                 config_filename=config_filename_base)
     print(f'Output directory: {output_paths["output_dir"]}')
     print(f'CSV file:         {output_paths["csv_file"]}')
     print(f'PDF file:         {output_paths["pdf_file"]}')
-    if 'pdf_file_short' in output_paths:
-        print(f'Short-term PDF:   {output_paths["pdf_file_short"]}')
+    print(f'2025-2100 PDF:    {output_paths["pdf_file_2025_2100"]}')
 
     print(f'\n' + '=' * 80)
     print(f'Forward Integration Complete')
