@@ -6,7 +6,7 @@ Creates CSV files and PDF plots of model results in timestamped directories.
 
 import os
 import csv
-import shutil
+import json
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -123,30 +123,32 @@ def create_output_directory(run_name, prod_category):
     return output_dir
 
 
-def copy_config_file(config_path, output_dir):
+def write_config_file(config_dict, filename, output_dir):
     """
-    Copy configuration JSON file to output directory.
+    Write the configuration actually run (including command-line overrides) as JSON.
 
     Parameters
     ----------
-    config_path : str
-        Path to input configuration file
+    config_dict : dict
+        Parsed configuration after overrides
+    filename : str
+        Name of the JSON file (the input configuration's basename)
     output_dir : str
-        Directory to copy file to
+        Directory to write the file to
 
     Returns
     -------
     str
-        Path to copied configuration file
+        Path to the written configuration file
 
     Notes
     -----
-    Preserves the original filename and formatting.
-    Ensures reproducibility by keeping exact copy of configuration used.
+    Uses the same layout as the input files (2-space indent), so without overrides the
+    written file is byte-identical to the input configuration.
     """
-    filename = os.path.basename(config_path)
     output_path = os.path.join(output_dir, filename)
-    shutil.copy2(config_path, output_path)
+    with open(output_path, 'w') as f:
+        json.dump(config_dict, f, indent=2)
     return output_path
 
 

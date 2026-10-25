@@ -15,16 +15,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import time
-import json
 import argparse
-import tempfile
 import pandas as pd
 from pathlib import Path
 from io import StringIO
-from src.parameters import load_configuration, ModelConfiguration, create_f_and_s_control_from_single
+from src.config_cli import parse_override_arguments, load_config_dict_with_overrides
+from src.parameters import configuration_from_dict, ModelConfiguration, create_f_and_s_control_from_single
 from src.optimization import UtilityOptimizer, create_control_function_from_points, create_f_and_s_control_function_from_points
 from src.economic_model import integrate_model, create_derived_variables
-from src.output import save_results, write_optimization_summary, copy_config_file, create_output_directory
+from src.output import save_results, write_optimization_summary, write_config_file, create_output_directory
 from src.visualization_utils import create_results_report_pdf
 
 
@@ -46,70 +45,6 @@ class TeeOutput:
 
     def close(self):
         self.file.close()
-
-
-def apply_config_override(config_dict, key_path, value):
-    """
-    Apply a command line override to a nested configuration dictionary.
-
-    Parameters
-    ----------
-    config_dict : dict
-        The configuration dictionary to modify
-    key_path : str
-        Dot-separated path to the key (e.g., "scalar_parameters.alpha")
-    value : str
-        String value to set (will be converted to appropriate type)
-    """
-    keys = key_path.split('.')
-
-    # Navigate to the parent dict
-    current = config_dict
-    for key in keys[:-1]:
-        if key not in current:
-            raise KeyError(f"Key path '{key_path}' not found in config (failed at '{key}')")
-        current = current[key]
-
-    final_key = keys[-1]
-    if final_key not in current:
-        raise KeyError(f"Key path '{key_path}' not found in config (final key '{final_key}' not found)")
-
-    # Infer type from existing value
-    existing_value = current[final_key]
-
-    try:
-        if existing_value is None:
-            # If existing is None, try int -> float -> bool -> string
-            try:
-                converted_value = int(value)
-            except ValueError:
-                try:
-                    converted_value = float(value)
-                except ValueError:
-                    if value.lower() in ('true', 'false'):
-                        converted_value = value.lower() == 'true'
-                    else:
-                        converted_value = value
-        elif isinstance(existing_value, bool):
-            # Handle bools before int (since bool is subclass of int in Python)
-            converted_value = value.lower() in ('true', '1', 'yes')
-        elif isinstance(existing_value, int):
-            converted_value = int(value)
-        elif isinstance(existing_value, float):
-            converted_value = float(value)
-        elif isinstance(existing_value, str):
-            converted_value = value
-        elif isinstance(existing_value, (list, dict)):
-            # Try to parse as JSON for lists and dicts
-            converted_value = json.loads(value)
-        else:
-            # Fallback: keep as string
-            converted_value = value
-    except (ValueError, json.JSONDecodeError) as e:
-        raise ValueError(f"Cannot convert '{value}' to type {type(existing_value).__name__} for key '{key_path}': {e}")
-
-    current[final_key] = converted_value
-    print(f"Override: {key_path} = {converted_value} (was {existing_value})")
 
 
 def parse_arguments():
@@ -153,24 +88,7 @@ Common overrides:
 
     # Use parse_known_args to allow arbitrary --key value pairs
     args, unknown = parser.parse_known_args()
-
-    # Parse overrides from unknown arguments
-    overrides = {}
-    i = 0
-    while i < len(unknown):
-        arg = unknown[i]
-        if arg.startswith('--'):
-            key = arg[2:]  # Remove '--' prefix
-            if i + 1 < len(unknown) and not unknown[i + 1].startswith('--'):
-                value = unknown[i + 1]
-                overrides[key] = value
-                i += 2
-            else:
-                raise ValueError(f"Override '{arg}' requires a value")
-        else:
-            raise ValueError(f"Unexpected argument '{arg}'. Overrides must start with '--'")
-
-    return args.config_file, args.prod_category, overrides
+    return args.config_file, args.prod_category, parse_override_arguments(unknown)
 
 
 def print_header(text):
@@ -229,26 +147,11 @@ def main():
         # Parse command line arguments
         config_path, prod_category, overrides = parse_arguments()
 
-        # Load base configuration from JSON file
-        with open(config_path, 'r') as f:
-            config_dict = json.load(f)
-
-        # Apply command line overrides
+        # Load configuration from JSON file and apply command line overrides
         if overrides:
             print_header("APPLYING COMMAND LINE OVERRIDES")
-            for key_path, value in overrides.items():
-                apply_config_override(config_dict, key_path, value)
-
-        # Create configuration object from modified dict
-        # Save modified dict to temp file for load_configuration to process
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tmp:
-            json.dump(config_dict, tmp, indent=2)
-            tmp_path = tmp.name
-
-        try:
-            config = load_configuration(tmp_path)
-        finally:
-            os.unlink(tmp_path)
+        config_dict = load_config_dict_with_overrides(config_path, overrides)
+        config = configuration_from_dict(config_dict)
         opt_params = config.optimization_params
 
         # Create output directory immediately and start logging to file
@@ -382,8 +285,8 @@ def main():
     opt_csv_path = write_optimization_summary(opt_results, output_dir, config.run_name, 'optimization_summary.csv', t_base)
     print(f"  Optimization CSV: {opt_csv_path}")
 
-    print("\nCopying configuration file...")
-    config_copy_path = copy_config_file(config_path, output_dir)
+    print("\nWriting configuration file (with any command line overrides)...")
+    config_copy_path = write_config_file(config_dict, config_filename_base, output_dir)
     print(f"  Configuration:    {config_copy_path}")
 
     print_header("SUMMARY")

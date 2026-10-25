@@ -142,6 +142,9 @@ def test_scripts_end_to_end(tmp_path):
     for pattern in ['*_results.csv', '*_distributions.xlsx', '*_optimization_summary.csv', '*.json',
                     '*_plots.pdf', '*_plots_2025-2100.pdf', 'plots_full.pdf', 'terminal_output.txt']:
         assert len(list(optimization_dir.glob(pattern))) == 1, pattern
+    # The configuration written to the output directory records the command-line overrides
+    with open(next(optimization_dir.glob('*.json'))) as f:
+        assert json.load(f)['optimization_parameters']['max_evaluations_final'] == 20
 
     subprocess.run([sys.executable, str(REPO_ROOT / 'scripts' / 'run_integration.py'), str(optimization_dir)],
                    cwd=tmp_path, env=environment, check=True, capture_output=True)

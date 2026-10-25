@@ -20,6 +20,7 @@ from src.constants import (
     IMPULSE_RESPONSE_A1, IMPULSE_RESPONSE_A2, IMPULSE_RESPONSE_A3,
     IMPULSE_RESPONSE_TAU1, IMPULSE_RESPONSE_TAU2, IMPULSE_RESPONSE_TAU3,
     ECUM_INITIAL,
+    INVERSE_EPSILON,
 )
 
 
@@ -315,7 +316,6 @@ class ScalarParameters:
 
     def __post_init__(self):
         """Set mu_max default and validate tax-policy domain."""
-        from src.constants import INVERSE_EPSILON
         if self.mu_max is None:
             object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
 
@@ -699,22 +699,28 @@ def _filter_description_keys(d):
 
 
 def load_configuration(config_path):
+    """Load model configuration from a JSON file (see configuration_from_dict)."""
+    with open(config_path, 'r') as f:
+        return configuration_from_dict(json.load(f))
+
+
+def configuration_from_dict(config_data):
     """
-    Load model configuration from JSON file.
+    Build the model configuration from a parsed JSON configuration dictionary.
 
     Parameters
     ----------
-    config_path : str
-        Path to JSON configuration file
+    config_data : dict
+        Parsed JSON configuration
 
     Returns
     -------
     ModelConfiguration
-        Complete model configuration loaded from file
+        Complete model configuration
 
     Notes
     -----
-    The JSON file must contain:
+    The configuration must contain:
     - run_name: string identifier for this run
     - scalar_parameters: dict with all ScalarParameters fields
     - time_functions: dict with specs for A, L, sigma, theta1
@@ -728,9 +734,6 @@ def load_configuration(config_path):
 
     See data/output/prod_s/9cases_s/*/9cases_s_gid-1.json for an example.
     """
-    with open(config_path, 'r') as f:
-        config_data = json.load(f)
-
     # Create scalar parameters (filter out description keys)
     scalar_params_data = _filter_description_keys(config_data['scalar_parameters'])
     scalar_params = ScalarParameters(**scalar_params_data)
