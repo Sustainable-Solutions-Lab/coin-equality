@@ -1,8 +1,9 @@
 """
 Numerical constants and tolerances for COIN_equality model.
 
-Defines small and large values used for numerical stability and bounds checking.
-Centralizes epsilon/bignum definitions to ensure consistency across the codebase.
+Centralizes the model's fixed physical constants (empirical Lorenz curve, temperature
+impulse response, initial climate state) and the numerical tolerances and bounds used by
+the simulation and the optimizer.
 """
 
 # Large negative number for utility when constraints are violated
@@ -18,18 +19,9 @@ NEG_BIGNUM = -1e30
 # - Root finding bracket offsets
 EPSILON = 1e-12
 
-# Objective function scaling factor for numerical stability in gradient-based optimization
-# Used for:
-# - Scaling objective values from ~1.5e13 to ~1.5 for better numerical conditioning
-# - Applied consistently to both objective values and gradients in all optimization wrappers
-# - Improves stability of gradient-based algorithms (LD_SLSQP, LD_LBFGS, etc.)
+# Scaling of the objective passed to NLopt (discounted utility is ~1e10), so the
+# optimizer works with values of order 1e-3
 OBJECTIVE_SCALE = 1e-13
-
-# Large value for detecting effectively infinite parameters
-# Used for:
-# - Checking if y_damage_distribution_exponent is so small that damage is effectively uniform
-# - Detecting when parameters should trigger special case handling
-INVERSE_EPSILON = 1.0 / EPSILON
 
 # Empirical Lorenz curve base parameters
 # The base empirical Lorenz curve is: L_base(F) = w₀·F^p₀ + w₁·F^p₁ + w₂·F^p₂ + w₃·F^p₃
@@ -82,11 +74,16 @@ IMPULSE_RESPONSE_TAU1 = 2.241      # years
 IMPULSE_RESPONSE_TAU2 = 35.750     # years
 IMPULSE_RESPONSE_TAU3 = 97.180     # years
 
-# ΔT_hist equilibrium constant from manuscript equation:
+# Initial climate state (2020), from the manuscript's historical warming:
 # ΔT_hist(t) = 1.1126 - 0.07022·e^((2020-t)/τ1) + 0.21036·e^((2020-t)/τ2) - 0.08308·e^((2020-t)/τ3)
-# The constant term equals R_∞ × Ecum_initial, so Ecum_initial = 1.1126 / R_∞
+# The constant term equals R_∞ × Ecum_initial, so Ecum_initial = 1.1126 / R_∞. The other
+# terms are the heat-uptake mode temperatures in 2020, obtained by convolving an exponential
+# emission history (633.5 GtC cumulative to 2020, from DICE-2023) with the impulse response.
 DELTA_T_HIST_EQUILIBRIUM = 1.1126  # °C
 ECUM_INITIAL = DELTA_T_HIST_EQUILIBRIUM / -(IMPULSE_RESPONSE_A1 + IMPULSE_RESPONSE_A2 + IMPULSE_RESPONSE_A3)
+H1_INITIAL = -0.07022  # °C (fast mode)
+H2_INITIAL = 0.21036   # °C (medium mode)
+H3_INITIAL = -0.08308  # °C (slow mode)
 
 # Control-point grid for the optimizer (see optimization.calculate_control_times)
 # The last WIND_DOWN_EFOLDING_TIMES capital e-folding times (1/delta each) before t_end form

@@ -63,7 +63,7 @@ def parse_arguments():
 Examples:
   python run_optimization.py config_baseline.json
   python run_optimization.py config_baseline.json --scalar_parameters.alpha 0.35
-  python run_optimization.py config_baseline.json --optimization_parameters.initial_guess_f 0.3 --run_name "test_run"
+  python run_optimization.py config_baseline.json --optimization_parameters.controls.f.initial_guess 2.0 --run_name "test_run"
 
 Override format:
   --key.subkey.subsubkey value
@@ -72,13 +72,11 @@ Common overrides:
   --run_name <name>
   --scalar_parameters.alpha <value>
   --scalar_parameters.rho <value>
-  --optimization_parameters.initial_guess_f <value>
-  --optimization_parameters.initial_guess_s <value>
-  --optimization_parameters.max_evaluations <value>
-  --optimization_parameters.n_points_final_f <value>
-  --optimization_parameters.n_points_final_s <value>
-  --optimization_parameters.n_points_initial_f <value>
-  --optimization_parameters.n_points_initial_s <value>
+  --optimization_parameters.controls.f.initial_guess <value>
+  --optimization_parameters.controls.s.initial_guess <value>
+  --optimization_parameters.max_evaluations_final <value>
+  --optimization_parameters.controls.f.n_points_final <value>
+  --optimization_parameters.controls.s.n_points_final <value>
   --time_functions.A.growth_rate <value>
         """
     )
@@ -159,20 +157,11 @@ def main():
     print(f"Time step: {config.integration_params.dt} years")
     print(f"\nIterative refinement mode:")
     print(f"  Number of iterations: {n_iterations}")
-    print(f"  Initial f control points: {opt_params.n_points_initial_f}")
-    if opt_params.n_points_final_f is not None:
-        print(f"  Final f control points: {opt_params.n_points_final_f}")
-    else:
-        print(f"  Final f control points: {round(1 + (opt_params.n_points_initial_f - 1) * 2.0**(n_iterations - 1))}")
-    print(f"  Initial guess: f = {opt_params.initial_guess_f}")
-    if opt_params.initial_guess_s is not None:
-        print(f"  Initial guess: s = {opt_params.initial_guess_s}")
-        print(f"  Initial s control points: {opt_params.n_points_initial_s}")
-        if opt_params.n_points_final_s is not None:
-            print(f"  Final s control points: {opt_params.n_points_final_s}")
-        else:
-            print(f"  Final s control points: same as f")
-        print(f"  Optimizing both f and s: YES")
+    for name, control in opt_params.controls.items():
+        print(f"  {name}: initial guess {control.initial_guess}, bounds {control.bounds}, "
+              f"control points {control.n_points_initial} -> {control.n_points_final}")
+    if 's' not in opt_params.controls:
+        print(f"  s: prescribed by time_functions['s']")
 
     print_header("OPTIMIZATION")
     print(f"Algorithm: {opt_params.algorithm}")

@@ -16,7 +16,23 @@ from src.distribution_utilities import (
     L_empirical_lorenz_derivative,
 )
 from src.parameters import evaluate_time_functions
-from src.constants import EPSILON, NEG_BIGNUM, LOG_DELTAU_NO_TAX, EMPIRICAL_LORENZ_BASE_GINI, OMEGA_BASE_MAX
+from src.constants import (
+    EPSILON,
+    NEG_BIGNUM,
+    LOG_DELTAU_NO_TAX,
+    EMPIRICAL_LORENZ_BASE_GINI,
+    OMEGA_BASE_MAX,
+    IMPULSE_RESPONSE_A1,
+    IMPULSE_RESPONSE_A2,
+    IMPULSE_RESPONSE_A3,
+    IMPULSE_RESPONSE_TAU1,
+    IMPULSE_RESPONSE_TAU2,
+    IMPULSE_RESPONSE_TAU3,
+    ECUM_INITIAL,
+    H1_INITIAL,
+    H2_INITIAL,
+    H3_INITIAL,
+)
 
 
 def invert_mac_to_mu(marginal_abatement_cost, theta1, theta2, mu_max):
@@ -146,9 +162,9 @@ def calculate_tendencies(state, sp, inputs, omega_yi_Omega_base_ratio_prev, Omeg
 
     # Temperature change via impulse response (Ricke & Caldeira 2014)
     # ΔT = R_∞·Ecum + H1 + H2 + H3, where R_∞ = -(a1+a2+a3)
-    a1 = sp.impulse_response_a1
-    a2 = sp.impulse_response_a2
-    a3 = sp.impulse_response_a3
+    a1 = IMPULSE_RESPONSE_A1
+    a2 = IMPULSE_RESPONSE_A2
+    a3 = IMPULSE_RESPONSE_A3
     R_inf = -(a1 + a2 + a3)
     delta_T = R_inf * Ecum + H1 + H2 + H3
 
@@ -326,9 +342,9 @@ def calculate_tendencies(state, sp, inputs, omega_yi_Omega_base_ratio_prev, Omeg
         'dK_dt': dK_dt,
         'dEcum_dt': dEcum_dt,
         # Impulse response heat-uptake tendencies: dHi/dt = ai·E(t) - Hi/τi
-        'dH1_dt': a1 * dEcum_dt - H1 / sp.impulse_response_tau1,
-        'dH2_dt': a2 * dEcum_dt - H2 / sp.impulse_response_tau2,
-        'dH3_dt': a3 * dEcum_dt - H3 / sp.impulse_response_tau3,
+        'dH1_dt': a1 * dEcum_dt - H1 / IMPULSE_RESPONSE_TAU1,
+        'dH2_dt': a2 * dEcum_dt - H2 / IMPULSE_RESPONSE_TAU2,
+        'dH3_dt': a3 * dEcum_dt - H3 / IMPULSE_RESPONSE_TAU3,
     }
     # Damage ratios for the next step, which scales them by its own Omega_base
     if Omega_base > EPSILON:
@@ -414,8 +430,8 @@ def integrate_model(config, f_values, s_values, store_detailed_output):
     Notes
     -----
     Euler integration, state(t+dt) = state(t) + dt * tendency(t), so all functional
-    relationships hold exactly at the output times. The initial state is K_initial,
-    Ecum_initial and H1_initial-H3_initial. Cumulative emissions are kept non-negative
+    relationships hold exactly at the output times. The initial state is K_initial and the
+    2020 climate state of constants.py. Cumulative emissions are kept non-negative
     (no cooling below the initial condition).
     """
     sp = config.scalar_params
@@ -426,7 +442,7 @@ def integrate_model(config, f_values, s_values, store_detailed_output):
     inputs = evaluate_time_functions(config, t_array)
     inputs.update({'t': t_array, 'f': f_values, 's': s_values})
 
-    state = {'K': sp.K_initial, 'Ecum': sp.Ecum_initial, 'H1': sp.H1_initial, 'H2': sp.H2_initial, 'H3': sp.H3_initial}
+    state = {'K': sp.K_initial, 'Ecum': ECUM_INITIAL, 'H1': H1_INITIAL, 'H2': H2_INITIAL, 'H3': H3_INITIAL}
     # First step: damage distributed uniformly, aggregate damage equal to Omega_base
     omega_yi_Omega_base_ratio = np.ones(len(grid.Fi))
     Omega_Omega_base_ratio = 1.0

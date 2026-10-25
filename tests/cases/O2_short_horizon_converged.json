@@ -97,38 +97,43 @@
     "_t_end": "400-year integration horizon",
     "dt": 1.0,
     "_dt": "1-year Euler timestep",
-    "plot_short_horizon": 100.0,
     "n_quad": 32,
     "_n_quad": "Gauss-Legendre quadrature nodes for income distribution integrals"
   },
   "optimization_parameters": {
     "max_evaluations_initial": 20000,
     "max_evaluations_final": 20000,
-    "max_evaluations_time_points": 320,
     "optimization_iterations": 2,
-    "optimize_time_points": false,
-    "n_points_initial_f": 4,
-    "n_points_final_f": 6,
-    "_n_points_final_f": "24 control points for log10(carbon price), distributed 2020-2220",
-    "initial_guess_f": 2.5,
-    "_initial_guess_f": "log10(MAC in $/tCO2). 2.5 = $316/tCO2 initial guess (avoids near-zero abatement trap)",
-    "bounds_f": [
-      -1.0,
-      4.0
-    ],
-    "_bounds_f": "MAC from $0.10 to $10,000",
-    "initial_guess_s": 0.256,
-    "_initial_guess_s": "Initial savings rate guess. Presence enables dual optimization of f and s.",
-    "bounds_s": [
-      0.0,
-      1.0
-    ],
-    "n_points_initial_s": 4,
-    "n_points_final_s": 6,
-    "_n_points_final_s": "24 control points for savings rate, distributed 2020-2220",
     "algorithm": "LN_SBPLX",
+    "ftol_rel": 0.0,
+    "ftol_abs": 0.0,
+    "xtol_rel": 0.0,
     "xtol_abs": 1e-08,
-    "looser_epsilon": 1e-07,
-    "_bounds_s_note": "FREE savings rate \u2014 Stage 0 test whether the [0.2, 0.4] constraint drives fig6 bumps"
+    "controls": {
+      "f": {
+        "initial_guess": 2.5,
+        "_initial_guess": "log10(MAC in $/tCO2). 2.5 = $316/tCO2 initial guess (avoids near-zero abatement trap)",
+        "bounds": [
+          -1.0,
+          4.0
+        ],
+        "_bounds": "MAC from $0.10 to $10,000",
+        "n_points_initial": 4,
+        "n_points_final": 6,
+        "_n_points_final": "24 control points for log10(carbon price), distributed 2020-2220"
+      },
+      "s": {
+        "initial_guess": 0.256,
+        "_initial_guess": "Initial savings rate guess. Presence enables dual optimization of f and s.",
+        "bounds": [
+          0.0,
+          1.0
+        ],
+        "n_points_initial": 4,
+        "n_points_final": 6,
+        "_n_points_final": "24 control points for savings rate, distributed 2020-2220",
+        "_bounds_note": "FREE savings rate \u2014 Stage 0 test whether the [0.2, 0.4] constraint drives fig6 bumps"
+      }
+    }
   }
 }

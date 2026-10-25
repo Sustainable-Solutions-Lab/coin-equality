@@ -736,7 +736,7 @@ def _create_plot_page_new(t, results, chart_specs, group_name, run_name, pdf, pa
     plt.close(fig)
 
 
-def save_results(results, run_name, prod_category, plot_short_horizon=None, output_dir=None, config_filename=None):
+def save_results(results, run_name, prod_category, output_dir=None, config_filename=None):
     """
     Save model results to CSV and PDF in timestamped directory.
 
@@ -750,8 +750,6 @@ def save_results(results, run_name, prod_category, plot_short_horizon=None, outp
         Production category path, e.g. 'discount/prod_discount_exact'
         or '9cases'. Used when output_dir is None to route outputs under
         data/output/prod/{prod_category}/.
-    plot_short_horizon : float or None
-        DEPRECATED - ignored. The 2025-2100 plot is always created.
     output_dir : str or None
         If provided, uses this directory for output. If None, creates new timestamped directory.
     config_filename : str, optional

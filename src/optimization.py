@@ -2,8 +2,8 @@
 Optimization of the control trajectories to maximize discounted aggregate utility.
 
 Controls: f(t) = log10(marginal abatement cost in $/tCO2), always optimized, and the
-savings rate s(t), optimized jointly with f when optimization_parameters.initial_guess_s
-is set and otherwise prescribed by time_functions['s'].
+savings rate s(t), optimized jointly with f when optimization_parameters.controls has an
+'s' entry and otherwise prescribed by time_functions['s'].
 
 Each optimized control is parameterized by its values at control times (relative to
 t_base) and interpolated with PCHIP onto the integration time grid. The optimization
@@ -13,7 +13,6 @@ grids, each initialized by interpolating the previous solution onto the new grid
 
 import sys
 import time
-from dataclasses import dataclass
 import numpy as np
 import nlopt
 from scipy.interpolate import PchipInterpolator
@@ -188,85 +187,48 @@ def discounted_utility(config, f_values, s_values):
 # Iterative-refinement optimization
 # =============================================================================
 
-@dataclass
-class ControlSchedule:
-    """How one optimized control (f or s) is parameterized across refinement iterations."""
-    name: str
-    initial_guess: float
-    bounds: list
-    n_points_initial: int
-    n_points_final: object  # int, list of explicit control years (calendar), or None
-    refinement_base: float  # growth factor of (number of points - 1) per iteration
-
-
-def _refinement_base(n_points_initial, n_points_final, n_iterations, base_if_unspecified):
-    if n_points_final is None:
-        return base_if_unspecified
-    if n_iterations <= 1:
-        return 2.0  # not used: a single iteration uses n_points_final directly
-    return ((n_points_final - 1) / (n_points_initial - 1)) ** (1.0 / (n_iterations - 1))
-
-
-def control_schedules(optimization_params):
-    """Schedules for f and, when initial_guess_s is set, s."""
-    op = optimization_params
-    n_iterations = op.optimization_iterations
-    f_schedule = ControlSchedule(
-        name='f',
-        initial_guess=op.initial_guess_f,
-        bounds=op.bounds_f if op.bounds_f is not None else [0.0, 1.0],
-        n_points_initial=op.n_points_initial_f,
-        n_points_final=op.n_points_final_f,
-        refinement_base=_refinement_base(op.n_points_initial_f, op.n_points_final_f, n_iterations, 2.0),
-    )
-    if op.initial_guess_s is None:
-        return [f_schedule]
-    s_schedule = ControlSchedule(
-        name='s',
-        initial_guess=op.initial_guess_s,
-        bounds=op.bounds_s if op.bounds_s is not None else [0.0, 1.0],
-        n_points_initial=op.n_points_initial_s,
-        n_points_final=op.n_points_final_s,
-        refinement_base=_refinement_base(op.n_points_initial_s, op.n_points_final_s, n_iterations,
-                                         f_schedule.refinement_base),
-    )
-    return [f_schedule, s_schedule]
-
-
-def iteration_control_times(schedule, iteration, n_iterations, config):
+def refinement_schedule(initial, final, n_iterations):
     """
-    Control times (relative to t_base) of one control in a refinement iteration.
+    Values for each refinement iteration, growing geometrically from initial to final.
 
-    Returns (times, r0); r0 is None for explicit control years.
+    Iteration k gets round(1 + (initial - 1) * base^(k-1)) with
+    base = ((final - 1) / (initial - 1))^(1 / (n_iterations - 1)); a single iteration gets final.
+    Used for the number of control points and for the evaluation budget.
+    """
+    if n_iterations == 1:
+        return [final]
+    base = ((final - 1) / (initial - 1)) ** (1.0 / (n_iterations - 1))
+    return [round(1 + (initial - 1) * base**(iteration - 1)) for iteration in range(1, n_iterations + 1)]
+
+
+def control_times_by_iteration(control, n_iterations, config):
+    """
+    Control times (relative to t_base) of one optimized control for each refinement iteration.
+
+    Returns a list of (times, r0) with r0 the geometric growth rate of the spacing, or None
+    for explicit control years.
     """
     t_base = config.scalar_params.t_base
-    if isinstance(schedule.n_points_final, list):
-        return np.array(schedule.n_points_final) - t_base, None
-    if n_iterations == 1:
-        n_points = schedule.n_points_final if schedule.n_points_final is not None else schedule.n_points_initial
-    else:
-        n_points = round(1 + (schedule.n_points_initial - 1) * schedule.refinement_base**(iteration - 1))
+    if isinstance(control.n_points_final, list):
+        return [(np.array(control.n_points_final) - t_base, None)] * n_iterations
     ip = config.integration_params
-    return calculate_control_times(n_points, ip.t_start - t_base, ip.t_end - t_base, ip.dt,
-                                   config.scalar_params.delta)
+    return [calculate_control_times(n_points, ip.t_start - t_base, ip.t_end - t_base, ip.dt,
+                                    config.scalar_params.delta)
+            for n_points in refinement_schedule(control.n_points_initial, control.n_points_final, n_iterations)]
 
 
-def _run_nlopt(objective, x0, lower_bounds, upper_bounds, algorithm, optimization_params, max_evaluations):
+def _run_nlopt(objective, x0, lower_bounds, upper_bounds, optimization_params, max_evaluations):
     """Maximize objective(x) with NLopt; returns (optimal_x, scaled optimum, termination code)."""
     op = optimization_params
-    opt = nlopt.opt(getattr(nlopt, algorithm), len(x0))
+    opt = nlopt.opt(getattr(nlopt, op.algorithm), len(x0))
     opt.set_lower_bounds(lower_bounds)
     opt.set_upper_bounds(upper_bounds)
     opt.set_max_objective(objective)
     opt.set_maxeval(max_evaluations)
-    if op.ftol_rel is not None:
-        opt.set_ftol_rel(op.ftol_rel)
-    if op.ftol_abs is not None:
-        opt.set_ftol_abs(op.ftol_abs)
-    if op.xtol_rel is not None:
-        opt.set_xtol_rel(op.xtol_rel)
-    if op.xtol_abs is not None:
-        opt.set_xtol_abs(op.xtol_abs)
+    opt.set_ftol_rel(op.ftol_rel)
+    opt.set_ftol_abs(op.ftol_abs)
+    opt.set_xtol_rel(op.xtol_rel)
+    opt.set_xtol_abs(op.xtol_abs)
     optimal_x = opt.optimize(np.clip(x0, lower_bounds, upper_bounds))
     return optimal_x, opt.last_optimum_value(), opt.last_optimize_result()
 
@@ -275,9 +237,9 @@ def optimize(config):
     """
     Optimize the controls by iterative refinement.
 
-    Iteration k uses round(1 + (n_points_initial - 1) * base^(k-1)) control points per
-    control (or n_points_final, or explicit control years, when there is one iteration)
-    and round(1 + (max_evaluations_initial - 1) * base_evaluations^(k-1)) evaluations.
+    Each refinement iteration optimizes the values of every control in
+    optimization_parameters.controls at its control points for that iteration (see
+    refinement_schedule and calculate_control_times; explicit control years when given).
     The first iteration starts every control at its initial guess (zero at the final
     point); later ones start from the previous solution interpolated onto the new grid.
 
@@ -297,67 +259,62 @@ def optimize(config):
     """
     op = config.optimization_params
     n_iterations = op.optimization_iterations
-    algorithm = op.algorithm if op.algorithm is not None else 'LN_SBPLX'
     # The objective never fills NLopt's gradient, so derivative-based (xD_*) algorithms
     # would silently see a zero gradient.
-    if algorithm[1] == 'D':
-        raise ValueError(f"Algorithm {algorithm} needs gradients; use a derivative-free "
+    if op.algorithm[1] == 'D':
+        raise ValueError(f"Algorithm {op.algorithm} needs gradients; use a derivative-free "
                          f"NLopt algorithm (LN_* or GN_*).")
 
-    schedules = control_schedules(op)
-    if n_iterations <= 1:
-        refinement_base_evaluations = 2.0  # not used: a single iteration uses max_evaluations_final
-    else:
-        refinement_base_evaluations = ((op.max_evaluations_final - 1) / (op.max_evaluations_initial - 1)) ** (1.0 / (n_iterations - 1))
+    controls = op.controls
+    control_grids = {name: control_times_by_iteration(control, n_iterations, config)
+                     for name, control in controls.items()}
+    max_evaluations_by_iteration = refinement_schedule(op.max_evaluations_initial, op.max_evaluations_final,
+                                                       n_iterations)
 
     t_base = config.scalar_params.t_base
     t_join = config.integration_params.t_end - WIND_DOWN_EFOLDING_TIMES / config.scalar_params.delta
-    print(f"\nIterative refinement: {n_iterations} iterations, "
-          + ', '.join(f"base_{schedule.name} = {schedule.refinement_base:.4f}" for schedule in schedules)
-          + f", base_evaluations = {refinement_base_evaluations:.4f}")
+    print(f"\nIterative refinement: {n_iterations} iterations")
+    for name, grids in control_grids.items():
+        print(f"Control points per iteration, {name}: {[len(times) for times, _ in grids]}")
+    print(f"Max evaluations per iteration: {max_evaluations_by_iteration}")
     print(f"Control point spacing: dynamic wind-down region (t > {t_join:.1f} years)")
-    print(f"Max evaluations: initial={op.max_evaluations_initial}, final={op.max_evaluations_final}")
 
     iteration_history = []
     for iteration in range(1, n_iterations + 1):
-        if n_iterations == 1:
-            max_evaluations = op.max_evaluations_final
-        else:
-            max_evaluations = round(1 + (op.max_evaluations_initial - 1) * refinement_base_evaluations**(iteration - 1))
-
+        max_evaluations = max_evaluations_by_iteration[iteration - 1]
         control_times = {}
         initial_guess = {}
         print(f"\n{'=' * 80}")
         print(f"  ITERATION {iteration}/{n_iterations}")
-        print(f"  Algorithm: {algorithm}")
+        print(f"  Algorithm: {op.algorithm}")
         print(f"  Max evaluations: {max_evaluations}")
-        for schedule in schedules:
-            times, r0 = iteration_control_times(schedule, iteration, n_iterations, config)
-            control_times[schedule.name] = times
+        for name, control in controls.items():
+            times, r0 = control_grids[name][iteration - 1]
+            control_times[name] = times
             if iteration == 1:
-                initial_guess[schedule.name] = np.full(len(times), schedule.initial_guess)
-                initial_guess[schedule.name][-1] = 0.0
+                initial_guess[name] = np.full(len(times), control.initial_guess)
+                initial_guess[name][-1] = 0.0
             else:
-                initial_guess[schedule.name] = control_trajectory(*iteration_history[-1]['controls'][schedule.name], times)
+                initial_guess[name] = control_trajectory(*iteration_history[-1]['controls'][name], times)
             spacing = 'explicit control years' if r0 is None else f'segment 1 growth r0={r0:.4f}'
-            print(f"\n  {schedule.name} - OPTIMIZED: {len(times)} control points ({spacing})")
+            print(f"\n  {name} - OPTIMIZED: {len(times)} control points ({spacing})")
             print(f"    Time points: {times + t_base}")
         print(f"{'=' * 80}\n")
 
-        sizes = [len(control_times[schedule.name]) for schedule in schedules]
-        split_points = np.cumsum(sizes)[:-1]
+        names = list(controls)
+        split_points = np.cumsum([len(control_times[name]) for name in names])[:-1]
         n_evaluations = 0
 
         def nlopt_objective(x, grad):
             nonlocal n_evaluations
             n_evaluations += 1
-            controls = {schedule.name: (control_times[schedule.name], values)
-                        for schedule, values in zip(schedules, np.split(x, split_points))}
+            trial_controls = {name: (control_times[name], values)
+                              for name, values in zip(names, np.split(x, split_points))}
             # ValueError: equal-utility-loss taxation cannot raise the required revenue.
             # RuntimeError: the tax root solve failed at extreme progressivity.
             # Either way the trajectory is infeasible.
             try:
-                objective_value = discounted_utility(config, *control_arrays(config, controls))
+                objective_value = discounted_utility(config, *control_arrays(config, trial_controls))
             except (ValueError, RuntimeError):
                 objective_value = NEG_BIGNUM
             if not np.isfinite(objective_value):
@@ -369,15 +326,15 @@ def optimize(config):
         iteration_start_time = time.time()
         optimal_x, scaled_optimum, termination_code = _run_nlopt(
             nlopt_objective,
-            np.concatenate([initial_guess[schedule.name] for schedule in schedules]),
-            np.concatenate([np.full(size, schedule.bounds[0]) for schedule, size in zip(schedules, sizes)]),
-            np.concatenate([np.full(size, schedule.bounds[1]) for schedule, size in zip(schedules, sizes)]),
-            algorithm, op, max_evaluations,
+            np.concatenate([initial_guess[name] for name in names]),
+            np.concatenate([np.full(len(control_times[name]), controls[name].bounds[0]) for name in names]),
+            np.concatenate([np.full(len(control_times[name]), controls[name].bounds[1]) for name in names]),
+            op, max_evaluations,
         )
         iteration_result = {
             'iteration': iteration,
-            'controls': {schedule.name: (control_times[schedule.name], values)
-                         for schedule, values in zip(schedules, np.split(optimal_x, split_points))},
+            'controls': {name: (control_times[name], values)
+                         for name, values in zip(names, np.split(optimal_x, split_points))},
             'objective': scaled_optimum / OBJECTIVE_SCALE,
             'n_evaluations': n_evaluations,
             'termination_name': NLOPT_TERMINATION_NAMES[termination_code],
@@ -399,7 +356,7 @@ def optimize(config):
         'controls': final_result['controls'],
         'objective': final_result['objective'],
         'n_evaluations': sum(result['n_evaluations'] for result in iteration_history),
-        'algorithm': algorithm,
+        'algorithm': op.algorithm,
         'n_iterations': n_iterations,
         'iteration_history': iteration_history,
     }

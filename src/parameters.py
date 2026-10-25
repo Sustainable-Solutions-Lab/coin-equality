@@ -16,13 +16,6 @@ import json
 import numpy as np
 from dataclasses import dataclass
 
-from src.constants import (
-    IMPULSE_RESPONSE_A1, IMPULSE_RESPONSE_A2, IMPULSE_RESPONSE_A3,
-    IMPULSE_RESPONSE_TAU1, IMPULSE_RESPONSE_TAU2, IMPULSE_RESPONSE_TAU3,
-    ECUM_INITIAL,
-    INVERSE_EPSILON,
-)
-
 
 # =============================================================================
 # Time-Dependent Function Factories
@@ -192,9 +185,7 @@ def create_gompertz_growth(initial_value, final_value, adjustment_coefficient):
 @dataclass
 class ScalarParameters:
     """
-    Time-invariant scalar parameters for the economic-climate model.
-
-    All parameters are required (no defaults).
+    Time-invariant scalar parameters of the economic-climate model.
 
     Attributes
     ----------
@@ -202,52 +193,42 @@ class ScalarParameters:
         Output elasticity of capital (capital share of income)
     delta : float
         Capital depreciation rate (yr^-1)
-    psi1 : float
-        Linear climate damage coefficient (°C⁻¹) [Barrage & Nordhaus 2023]
-    psi2 : float
-        Quadratic climate damage coefficient (°C⁻²) [Barrage & Nordhaus 2023]
+    psi1, psi2 : float
+        Linear (°C⁻¹) and quadratic (°C⁻²) climate damage coefficients [Barrage & Nordhaus 2023]
     y_damage_distribution_exponent : float
-        Income scale for climate damage distribution ($)
-        Controls how damage is distributed across income levels
-        Only used when income_dependent_damage_distribution=True
+        Climate Damage Vulnerability Exponent beta: damage fraction scales as
+        (y_net / y_net_reference)^(-beta). 0 = uniform vulnerability, 1 = equal absolute damage
     y_net_reference : float
-        Reference income for climate damage power-law scaling ($/person)
-        Income levels are normalized by this value in damage calculations
-        Only used when income_dependent_damage_distribution=True
+        Reference income for the damage power law ($/person)
     eta : float
         Coefficient of relative risk aversion (CRRA utility parameter)
     rho : float
         Pure rate of time preference (yr^-1)
     theta2 : float
         Abatement cost exponent
-    mu_max : float
-        Maximum allowed abatement fraction (cap on μ)
-        Default: INVERSE_EPSILON (effectively no cap)
-    Ecum_initial : float
-        Initial cumulative CO2 emissions (tCO2)
-        Default: 0.0 (no prior emissions)
     K_initial : float
         Initial capital stock ($)
-        Required parameter, must be specified in configuration
-    income_dependent_aggregate_damage : bool
-        If True, aggregate damage decreases as world gets richer
-        If False, damage fraction depends only on temperature (DICE-like)
     tax_equity : float
-        Progressivity knob in [0, 1) for the single tax policy.
-        eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1). When eta > 1:
-        tax_equity=0 gives a flat fractional rate; tax_equity=0.5 gives equal utility
-        loss; tax_equity -> 1 concentrates tax on the highest incomes.
-        At eta = 1 the knob is degenerate (any value yields a flat rate, the log-utility branch).
+        Tax Progressivity Parameter tau in [0, 1):
+        eta_effective = 1 + tax_equity/(1-tax_equity) * (eta - 1). When eta > 1,
+        tax_equity=0 gives a flat fractional rate, 0.5 equal utility loss, and -> 1
+        concentrates tax on the highest incomes. At eta = 1 any value gives a flat rate.
+    income_dependent_aggregate_damage : bool
+        If True, aggregate damage decreases as the world gets richer; if False the
+        aggregate damage fraction depends only on temperature (DICE-like)
     use_empirical_lorenz : bool
-        If True, use Empirical Lorenz formulation L(F) = w0*F^p0 + w1*F^p1 + w2*F^p2 + w3*F^p3
-        If False, use Pareto-Lorenz formulation (default)
+        If True, empirical Lorenz curve w0*F^p0 + ... + w3*F^p3 scaled to the Gini;
+        if False, Pareto-Lorenz
     t_base : float
-        Base year for time-dependent functions. Time functions receive (t - t_base)
-        so they can be parameterized for relative time (0 = base year).
-        Default: 2020.0
+        Base year: time functions receive t - t_base
+    mu_max : float
+        Maximum abatement fraction (values > 1 allow net-negative emissions)
+    year_extra_emission, amount_extra_emission : float
+        Extra emission pulse (tCO2) in the time step containing that year (0 amount = none)
+    year_extra_consumption, amount_extra_consumption : float
+        Extra consumption pulse ($) in the time step containing that year
     loose_epsilon : float
-        Convergence tolerance for Brent's-method root solve in find_log_deltaU_equal_utility.
-        Default: 1e-8
+        Convergence tolerance (in log deltaU) of the tax root solve
     """
     alpha: float
     delta: float
@@ -261,38 +242,17 @@ class ScalarParameters:
     K_initial: float
     tax_equity: float
     income_dependent_aggregate_damage: bool
-    use_empirical_lorenz: bool = False
-    t_base: float = 2020.0  # Base year for time functions (functions receive t - t_base)
-    mu_max: float = None  # Will be set to INVERSE_EPSILON in __post_init__ if None
-    Ecum_initial: float = ECUM_INITIAL  # Derived from ΔT_hist equation: 1.1126 / R_∞
-    # Extra emission pulse parameters (for sensitivity analysis)
-    year_extra_emission: float = 0.0  # Year to add extra emission pulse (0 = disabled)
-    amount_extra_emission: float = 0.0  # Amount of extra emission (tCO2)
-    # Extra consumption pulse parameters (for sensitivity analysis)
-    year_extra_consumption: float = 0.0  # Year to add extra consumption pulse (0 = disabled)
-    amount_extra_consumption: float = 0.0  # Amount of extra consumption ($)
-    # Convergence tolerance for the tax-amount root solve in find_log_deltaU_equal_utility
-    loose_epsilon: float = 1e-8
-    # Impulse response temperature model (Ricke & Caldeira 2014)
-    # Three-exponential convolution capturing delayed warming (~2 yr fast, ~36 yr medium, ~97 yr slow)
-    impulse_response_a1: float = IMPULSE_RESPONSE_A1    # °C/tCO₂
-    impulse_response_a2: float = IMPULSE_RESPONSE_A2    # °C/tCO₂
-    impulse_response_a3: float = IMPULSE_RESPONSE_A3    # °C/tCO₂
-    impulse_response_tau1: float = IMPULSE_RESPONSE_TAU1  # years
-    impulse_response_tau2: float = IMPULSE_RESPONSE_TAU2  # years
-    impulse_response_tau3: float = IMPULSE_RESPONSE_TAU3  # years
-    # Initial values for heat-uptake state variables (encode pre-2020 emission history)
-    # Computed by convolving an exponential emission history (633.5 GtC cumulative to 2020,
-    # from DICE-2023) with the impulse response g(t). See SI eq. for ΔT_hist(t).
-    H1_initial: float = -0.07022  # °C (fast mode, τ=2.241 yr)
-    H2_initial: float = 0.21036   # °C (medium mode, τ=35.750 yr)
-    H3_initial: float = -0.08308  # °C (slow mode, τ=97.180 yr)
+    use_empirical_lorenz: bool
+    t_base: float
+    mu_max: float
+    year_extra_emission: float
+    amount_extra_emission: float
+    year_extra_consumption: float
+    amount_extra_consumption: float
+    loose_epsilon: float
 
     def __post_init__(self):
-        """Set mu_max default and validate tax-policy domain."""
-        if self.mu_max is None:
-            object.__setattr__(self, 'mu_max', INVERSE_EPSILON)
-
+        """Validate the tax-policy domain."""
         # tax_equity = 1.0 is a singularity in the eta_eff mapping; values outside
         # [0, 1) are not part of the policy domain. Anything inside that range is
         # allowed; if the math underflows at extreme values, the solver / post-solve
@@ -310,162 +270,89 @@ class IntegrationParameters:
 
     Attributes
     ----------
-    t_start : float
-        Start time for integration (yr)
-    t_end : float
-        End time for integration (yr)
+    t_start, t_end : float
+        Start and end of integration (calendar years)
     dt : float
-        Time step for Euler integration (yr)
+        Euler time step (yr)
     n_quad : int
-        Number of Gauss-Legendre quadrature points for income distribution integration.
-        Higher values = more accurate but slower. Typical: 16 (testing), 32 (production), 64 (high precision).
-    plot_short_horizon : float
-        Time horizon (yr) for short-term detailed plots.
-        Creates second PDF with results from t_start to plot_short_horizon.
+        Number of Gauss-Legendre quadrature points over population rank.
+        Typical: 16 (testing), 32 (production), 64 (high precision).
     """
     t_start: float
     t_end: float
     dt: float
     n_quad: int
-    plot_short_horizon: float
+
+
+@dataclass
+class ControlParameters:
+    """
+    Parameterization of one optimized control (f or s) across refinement iterations.
+
+    Attributes
+    ----------
+    initial_guess : float
+        Value at every control point in the first iteration (the final point starts at 0)
+    bounds : list of float
+        [min, max] enforced by the optimizer
+    n_points_initial : int
+        Control points in the first iteration
+    n_points_final : int or list of float
+        Control points in the last iteration (the count grows geometrically in between), or
+        an explicit list of control years (calendar), which requires optimization_iterations = 1
+    """
+    initial_guess: float
+    bounds: list
+    n_points_initial: int
+    n_points_final: object
+
+    def __post_init__(self):
+        if isinstance(self.n_points_final, list):
+            self.n_points_final = sorted(self.n_points_final)
 
 
 @dataclass
 class OptimizationParameters:
     """
-    Parameters controlling optimization.
-
-    Uses iterative refinement optimization with progressively refined control grids.
-
-    Supports dual optimization when initial_guess_s is specified.
+    Parameters controlling optimization by iterative refinement.
 
     Attributes
     ----------
-    max_evaluations_initial : int
-        Maximum number of objective function evaluations for first iteration.
-        Scales progressively for intermediate iterations using refinement_base_evaluations.
-    max_evaluations_final : int
-        Maximum number of objective function evaluations for final iteration.
-        Refinement base calculated as: ((max_final - 1) / (max_initial - 1))^(1/(n_iterations - 1))
-        Intermediate iterations scale as: round(1 + (max_initial - 1) * base^(iteration - 1))
-        Example: With max_initial=5000, max_final=30000, n_iterations=3:
-            Iteration 1: 5000, Iteration 2: 12247, Iteration 3: 30000
+    max_evaluations_initial, max_evaluations_final : int
+        Objective evaluations allowed in the first and last iteration; the budget grows
+        geometrically in between
     optimization_iterations : int
-        Number of refinement iterations.
-        Iteration 1: n_points_initial control points at t_start and t_end
-        Iteration k: progressively more control points based on refinement_base
-        Example: With n_points_initial=2 and refinement_base=2.0:
-            Iteration 1: 2 points, Iteration 2: 3 points, Iteration 3: 5 points, etc.
-        Note: Both f and s use the same number of optimization_iterations in dual optimization mode.
-    initial_guess_f : float
-        Initial f value for all control points in first iteration.
-        Must satisfy 0 ≤ f ≤ 1.
-    algorithm : str, optional
-        Derivative-free NLopt algorithm used for every iteration. If None, defaults to 'LN_SBPLX'.
-        - 'LN_*': local, derivative-free (LN_SBPLX, LN_BOBYQA, LN_COBYLA, LN_NELDERMEAD)
-        - 'GN_*': global, derivative-free (GN_ISRES, GN_DIRECT_L)
-        Derivative-based algorithms (LD_*, GD_*) are rejected: no gradients are computed.
-    ftol_rel : float, optional
-        Relative tolerance on objective function changes.
-        Stops when |Δf| < ftol_rel * |f|.
-        If None, uses NLopt default (0.0 = disabled).
-    ftol_abs : float, optional
-        Absolute tolerance on objective function changes.
-        Stops when |Δf| < ftol_abs.
-        If None, uses NLopt default (0.0 = disabled).
-    xtol_rel : float, optional
-        Relative tolerance on parameter changes.
-        Stops when |Δx| < xtol_rel * |x| for all parameters.
-        If None, uses NLopt default (0.0 = disabled).
-    xtol_abs : float, optional
-        Absolute tolerance on parameter changes.
-        Stops when |Δx| < xtol_abs for all parameters.
-        Default: 1e-8, which is appropriate for control parameters in [0,1].
-        If None, uses NLopt default (0.0 = disabled).
-    n_points_final_f : int or list of float, optional
-        Control points for f in final iteration. Can be:
-        - int: Target number of control points (automatic geometric spacing)
-          If specified, refinement_base is calculated as: ((n_points_final_f - 1) / (n_points_initial_f - 1))^(1/(n_iterations - 1))
-          If None, uses refinement_base = 2.0 (default behavior: 2, 3, 5, 9, 17, ...)
-        - list of float: Explicit control point times in calendar years (e.g., [2020, 2030, 2050, 2100, 2200, 2420])
-          Requires optimization_iterations = 1. Times are converted internally to relative time.
-        Example: n_points_final_f=17 with 5 iterations gives base ≈ 2.0
-        Example: n_points_final_f=[2020, 2025, 2030, 2050, 2100, 2200, 2420] uses those exact times
-    n_points_initial_f : int, optional
-        Number of f control points in first iteration (only used in iterative mode).
-        Default: 2
-        Used with n_points_final_f to determine refinement_base.
-        Example: n_points_initial_f=3, n_points_final_f=10, n_iterations=4 gives base ≈ 1.65
-    initial_guess_s : float, optional
-        Enables dual optimization of both f and s when present.
-        Initial s value for all control points in first iteration.
-        Must satisfy 0 ≤ s ≤ 1.
-    n_points_final_s : int or list of float, optional
-        Control points for s in final iteration. Can be:
-        - int: Target number of control points (automatic geometric spacing)
-          If None, uses same refinement base as f.
-        - list of float: Explicit control point times in calendar years (e.g., [2020, 2030, 2050, 2100, 2200, 2420])
-          Requires optimization_iterations = 1. Times are converted internally to relative time.
-        Can differ from n_points_final_f to allow different temporal resolution for s.
-    n_points_initial_s : int, optional
-        Number of s control points in first iteration (only used in iterative mode).
-        Default: 2
-        Used with n_points_final_s to determine refinement_base for s.
-    bounds_f : list of [float, float], optional
-        Bounds for f values as [min, max]. Default: [0.0, 1.0]
-        Example: [0.0, 0.8] to limit maximum abatement allocation to 80%
-    bounds_s : list of [float, float], optional
-        Bounds for s values as [min, max]. Default: [0.0, 1.0]
-        Example: [0.2, 0.3] to constrain savings rate between 20% and 30%
+        Number of refinement iterations
+    algorithm : str
+        Derivative-free NLopt algorithm used for every iteration:
+        'LN_*' local (LN_SBPLX, LN_BOBYQA, LN_COBYLA, LN_NELDERMEAD) or 'GN_*' global
+        (GN_ISRES, GN_DIRECT_L). Derivative-based algorithms are rejected.
+    ftol_rel, ftol_abs, xtol_rel, xtol_abs : float
+        NLopt stopping tolerances on the objective and on the control values; 0 disables
+        a criterion
+    controls : dict
+        {'f': ControlParameters} for f = log10(marginal abatement cost), plus
+        {'s': ControlParameters} when the savings rate is optimized jointly; otherwise
+        s follows time_functions['s']
     """
     max_evaluations_initial: int
     max_evaluations_final: int
     optimization_iterations: int
-    initial_guess_f: object  # list or float
-    algorithm: str = None
-    ftol_rel: float = None
-    ftol_abs: float = None
-    xtol_rel: float = None
-    xtol_abs: float = 1e-8
-    n_points_final_f: object = None  # int or list of float (explicit times in calendar years)
-    n_points_initial_f: int = 2
-    initial_guess_s: object = None  # list or float, enables dual optimization if present
-    n_points_final_s: object = None  # int or list of float (explicit times in calendar years)
-    n_points_initial_s: int = 2
-    bounds_f: list = None  # [min, max] for f, defaults to [0.0, 1.0]
-    bounds_s: list = None  # [min, max] for s, defaults to [0.0, 1.0]
-    # Obsolete keys still present in the published configs (time-point adjustment and
-    # gradient-based optimization were removed); accepted and ignored until the configs
-    # are migrated to the new schema.
-    max_evaluations_time_points: int = None
-    optimize_time_points: bool = False
-    looser_epsilon: float = None
+    algorithm: str
+    ftol_rel: float
+    ftol_abs: float
+    xtol_rel: float
+    xtol_abs: float
+    controls: dict
 
     def __post_init__(self):
-        """Validate optimization parameters."""
-        # If explicit times provided (list), require optimization_iterations = 1
-        explicit_f = isinstance(self.n_points_final_f, list)
-        explicit_s = isinstance(self.n_points_final_s, list)
-
-        if explicit_f or explicit_s:
-            if self.optimization_iterations != 1:
-                raise ValueError(
-                    "Explicit control point times (list) only supported with optimization_iterations=1. "
-                    f"Got optimization_iterations={self.optimization_iterations}"
-                )
-
-            # Validate list contents
-            if explicit_f:
-                if len(self.n_points_final_f) == 0:
-                    raise ValueError("n_points_final_f list cannot be empty")
-                # Sort the list (user may have provided unsorted)
-                self.n_points_final_f = sorted(self.n_points_final_f)
-
-            if explicit_s:
-                if len(self.n_points_final_s) == 0:
-                    raise ValueError("n_points_final_s list cannot be empty")
-                # Sort the list (user may have provided unsorted)
-                self.n_points_final_s = sorted(self.n_points_final_s)
+        """Explicit control years only make sense with a single iteration."""
+        if (any(isinstance(control.n_points_final, list) for control in self.controls.values())
+                and self.optimization_iterations != 1):
+            raise ValueError(
+                "Explicit control point times (list) only supported with optimization_iterations=1. "
+                f"Got optimization_iterations={self.optimization_iterations}"
+            )
 
 
 @dataclass
@@ -480,8 +367,8 @@ class ModelConfiguration:
     scalar_params : ScalarParameters
         Time-invariant scalar parameters
     time_functions : dict
-        Dictionary mapping parameter names to time-dependent callables.
-        Required keys: 'A', 'L', 'sigma', 'theta1'
+        Maps names to time-dependent callables (relative time t - t_base).
+        Required: EXOGENOUS_TIME_FUNCTIONS, and 's' when the savings rate is prescribed.
     integration_params : IntegrationParameters
         Integration control parameters
     optimization_params : OptimizationParameters
@@ -573,60 +460,31 @@ def configuration_from_dict(config_data):
     Parameters
     ----------
     config_data : dict
-        Parsed JSON configuration
+        Parsed JSON configuration with run_name, scalar_parameters, time_functions,
+        integration_parameters and optimization_parameters (including its controls)
 
     Returns
     -------
     ModelConfiguration
-        Complete model configuration
 
     Notes
     -----
-    The configuration must contain:
-    - run_name: string identifier for this run
-    - scalar_parameters: dict with all ScalarParameters fields
-    - time_functions: dict with specs for A, L, sigma, theta1
-    - integration_parameters: dict with t_start, t_end, dt, n_quad
-    - optimization_parameters: dict with max_evaluations
-
-    The initial state is taken from the scalar parameters: K(0) = K_initial,
-    Ecum(0) = Ecum_initial, H1-H3(0) = H1_initial-H3_initial.
-
-    Keys starting with '_' are treated as comments/descriptions and ignored.
-
+    Keys starting with '_' are comments and are ignored.
     See data/output/prod_s/9cases_s/*/9cases_s_gid-1.json for an example.
     """
-    # Create scalar parameters (filter out description keys)
-    scalar_params_data = _filter_description_keys(config_data['scalar_parameters'])
-    scalar_params = ScalarParameters(**scalar_params_data)
-
-    # Create time-dependent functions (filter out description keys)
-    time_functions = {
-        name: _create_time_function(_filter_description_keys(spec))
-        for name, spec in config_data['time_functions'].items()
-        if not name.startswith('_')
-    }
-
-    # Create integration parameters (filter out description keys)
-    integration_params_data = _filter_description_keys(config_data['integration_parameters'])
-    integration_params = IntegrationParameters(**integration_params_data)
-
-    # Create optimization parameters (filter out description keys)
     optimization_params_data = _filter_description_keys(config_data['optimization_parameters'])
-    optimization_params = OptimizationParameters(**optimization_params_data)
-
-    if 's' not in time_functions:
-        # Use initial_guess_s as default constant s function
-        initial_s = optimization_params.initial_guess_s if optimization_params.initial_guess_s is not None else 0.24
-        time_functions['s'] = create_constant(initial_s if isinstance(initial_s, float) else initial_s[0])
-
-    # Extract run name
-    run_name = config_data['run_name']
-
+    optimization_params_data['controls'] = {
+        name: ControlParameters(**_filter_description_keys(spec))
+        for name, spec in optimization_params_data['controls'].items()
+    }
     return ModelConfiguration(
-        run_name=run_name,
-        scalar_params=scalar_params,
-        time_functions=time_functions,
-        integration_params=integration_params,
-        optimization_params=optimization_params,
+        run_name=config_data['run_name'],
+        scalar_params=ScalarParameters(**_filter_description_keys(config_data['scalar_parameters'])),
+        time_functions={
+            name: _create_time_function(_filter_description_keys(spec))
+            for name, spec in config_data['time_functions'].items()
+            if not name.startswith('_')
+        },
+        integration_params=IntegrationParameters(**_filter_description_keys(config_data['integration_parameters'])),
+        optimization_params=OptimizationParameters(**optimization_params_data),
     )

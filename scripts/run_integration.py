@@ -3,7 +3,7 @@ Run forward integration using control trajectories.
 
 Two modes of operation:
 1. From optimization output: Load config and control trajectories from an output directory
-2. From JSON config: Use initial_guess_f and initial_guess_s as constant control values
+2. From JSON config: hold the optimized controls constant at their initial guesses
 
 Usage:
     python run_integration.py <path> [--param.path value ...]
@@ -18,7 +18,7 @@ Examples:
     # From optimization output directory:
     python run_integration.py data/output/config_010_t-t-t-f-f_10_1_1000_el_20260105-165554
 
-    # From JSON config file (uses initial_guess_f and initial_guess_s):
+    # From JSON config file (controls held at their initial guesses):
     python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json
 
     # With parameter overrides:
@@ -38,6 +38,7 @@ from pathlib import Path
 from src.config_cli import parse_override_arguments, load_config_dict_with_overrides
 from src.parameters import configuration_from_dict
 from src.economic_model import integrate_model, create_derived_variables, time_grid
+from src.optimization import control_arrays
 from src.output import save_results
 from scipy.interpolate import PchipInterpolator
 
@@ -59,7 +60,7 @@ Examples:
   # From optimization output directory:
   python run_integration.py data/output/config_010_f-f-f-f-f_10_1_1000_el_20260105-165554
 
-  # From JSON config file (uses initial_guess_f and initial_guess_s):
+  # From JSON config file (controls held at their initial guesses):
   python run_integration.py json/config_934_f-f-f-f-f_1_100k_hyp-0.3.json
 
   # With parameter overrides:
@@ -84,12 +85,6 @@ Common overrides:
     # Use parse_known_args to allow arbitrary --key value pairs
     args, unknown = parser.parse_known_args()
     return args.input_path, parse_override_arguments(unknown)
-
-
-def constant_control_arrays(initial_f, initial_s, bounds_f, bounds_s, n_steps):
-    """Constant f and s (clipped to their bounds) at each of n_steps integration times."""
-    return (np.full(n_steps, np.clip(initial_f, bounds_f[0], bounds_f[1])),
-            np.full(n_steps, np.clip(initial_s, bounds_s[0], bounds_s[1])))
 
 
 def load_control_trajectory_from_csv(csv_path):
@@ -118,28 +113,33 @@ def load_control_trajectory_from_csv(csv_path):
     return t_values, f_values, s_values
 
 
-def control_arrays_from_csv(t_values, f_values, s_values, t_grid, bounds_f, bounds_s):
+def control_arrays_from_csv(config, t_values, control_values):
     """
-    f and s on the integration grid from a results CSV, by PCHIP interpolation.
+    f and s on the integration grid by PCHIP interpolation of a results CSV.
+
+    Optimized controls are clipped to their optimizer bounds.
 
     Parameters
     ----------
-    t_values, f_values, s_values : array
-        Calendar years and control values from the CSV
-    t_grid : array
-        Calendar years of the integration time steps
-    bounds_f, bounds_s : list
-        [min, max] bounds the interpolated values are clipped to
+    config : ModelConfiguration
+    t_values : array
+        Calendar years from the CSV
+    control_values : dict
+        {'f': array, 's': array} from the CSV
 
     Returns
     -------
     tuple of ndarray
-        (f, s) at the times t_grid
+        (f, s) at the integration times
     """
-    f_interpolator = PchipInterpolator(t_values, f_values, extrapolate=True)
-    s_interpolator = PchipInterpolator(t_values, s_values, extrapolate=True)
-    return (np.clip(f_interpolator(t_grid), bounds_f[0], bounds_f[1]),
-            np.clip(s_interpolator(t_grid), bounds_s[0], bounds_s[1]))
+    t_grid = time_grid(config.integration_params)
+    controls = config.optimization_params.controls
+    arrays = {}
+    for name, values in control_values.items():
+        arrays[name] = PchipInterpolator(t_values, values, extrapolate=True)(t_grid)
+        if name in controls:
+            arrays[name] = np.clip(arrays[name], *controls[name].bounds)
+    return arrays['f'], arrays['s']
 
 
 def find_files_in_output_dir(output_dir):
@@ -206,7 +206,7 @@ def main():
         print(f'COIN_equality Forward Integration from JSON Config')
         print(f'=' * 80)
         print(f'Config file: {input_path}')
-        print(f'Mode: Constant controls (using initial_guess_f and initial_guess_s)\n')
+        print(f'Mode: Constant controls (initial guesses of the optimized controls)\n')
         config_path = input_path
     else:
         print(f'COIN_equality Forward Integration from Optimized Controls')
@@ -232,23 +232,15 @@ def main():
     print(f'  Time span: {config.integration_params.t_start} to {config.integration_params.t_end} yr')
     print(f'  Time step: {config.integration_params.dt} yr')
 
-    # Get bounds from config
-    bounds_f = config.optimization_params.bounds_f if config.optimization_params.bounds_f is not None else [0.0, 1.0]
-    bounds_s = config.optimization_params.bounds_s if config.optimization_params.bounds_s is not None else [0.0, 1.0]
-
     if is_json_file:
-        # Use constant controls from initial guesses
-        initial_f = config.optimization_params.initial_guess_f
-        initial_s = config.optimization_params.initial_guess_s
-
+        # Optimized controls held at their initial guesses (clipped to their bounds); a
+        # prescribed savings rate follows time_functions['s']
         print(f'\nUsing constant control values from config:')
-        print(f'  initial_guess_f: {initial_f}')
-        print(f'  initial_guess_s: {initial_s}')
-        print(f'  bounds_f: {bounds_f}')
-        print(f'  bounds_s: {bounds_s}')
-
-        f_values, s_values = constant_control_arrays(initial_f, initial_s, bounds_f, bounds_s,
-                                                     len(time_grid(config.integration_params)))
+        constant_controls = {}
+        for name, control in config.optimization_params.controls.items():
+            print(f'  {name}: initial guess {control.initial_guess}, bounds {control.bounds}')
+            constant_controls[name] = (np.array([0.0]), np.array([np.clip(control.initial_guess, *control.bounds)]))
+        f_values, s_values = control_arrays(config, constant_controls)
     else:
         # Load control trajectories from CSV
         print(f'\nLoading control trajectories from CSV...')
@@ -263,12 +255,8 @@ def main():
         for idx in sample_indices:
             print(f'    t={t_csv[idx]:6.1f} yr: f={f_csv[idx]:.6f}, s={s_csv[idx]:.6f}')
 
-        # Interpolate onto the integration grid, clipped to the bounds from config
         print(f'\nInterpolating controls onto the integration grid (PCHIP)...')
-        print(f'  bounds_f: {bounds_f}')
-        print(f'  bounds_s: {bounds_s}')
-        f_values, s_values = control_arrays_from_csv(t_csv, f_csv, s_csv, time_grid(config.integration_params),
-                                                     bounds_f, bounds_s)
+        f_values, s_values = control_arrays_from_csv(config, t_csv, {'f': f_csv, 's': s_csv})
 
     # Run integration
     print(f'\nRunning forward integration...')

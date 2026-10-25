@@ -195,7 +195,7 @@ OPTIMIZATION_CASES = {
 
 def run_optimization_case(case_name, initial_guess_f_perturbation):
     config = load_configuration(str(OPTIMIZATION_CASES[case_name]['config_path']))
-    config.optimization_params.initial_guess_f += initial_guess_f_perturbation
+    config.optimization_params.controls['f'].initial_guess += initial_guess_f_perturbation
     opt_results = optimize(config)
 
     outputs = {
