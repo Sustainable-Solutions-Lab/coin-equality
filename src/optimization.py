@@ -13,33 +13,7 @@ import time
 from scipy.interpolate import PchipInterpolator
 from src.economic_model import integrate_model
 from src.parameters import ModelConfiguration, create_f_and_s_control_from_single
-from src.constants import NEG_BIGNUM
-
-
-def requires_gradient(algorithm_name):
-    """
-    Check if NLopt algorithm requires gradient computation.
-
-    Parameters
-    ----------
-    algorithm_name : str
-        NLopt algorithm name (e.g., 'LD_SLSQP', 'LN_SBPLX')
-
-    Returns
-    -------
-    bool
-        True if algorithm requires gradients (LD_* or GD_* algorithms)
-        False for derivative-free algorithms (LN_*, GN_*)
-
-    Notes
-    -----
-    NLopt algorithm naming convention:
-    - LD_* : Local, Derivative-based (requires gradients)
-    - LN_* : Local, No derivatives
-    - GN_* : Global, No derivatives
-    - GD_* : Global, Derivative-based (rare, not commonly used)
-    """
-    return algorithm_name.startswith('LD_') or algorithm_name.startswith('GD_')
+from src.constants import NEG_BIGNUM, OBJECTIVE_SCALE
 
 
 def calculate_control_times(n_points, t_start, t_end, dt, delta):
@@ -540,7 +514,7 @@ class UtilityOptimizer:
         control_times = np.array(control_times)
 
         def objective_wrapper(x, grad):
-            """Objective function wrapper with numerical gradient computation."""
+            """NLopt objective (derivative-free algorithms only, so grad is never filled)."""
             obj_value = self.calculate_objective(x, control_times)
 
             # Check if objective value is valid
@@ -549,25 +523,7 @@ class UtilityOptimizer:
                 print(f"  x: {x}")
                 return -1e30  # Return large negative value for invalid objective
 
-            # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
-            if grad.size > 0:
-                from src.constants import OBJECTIVE_SCALE
-                eps = self.base_config.optimization_params.looser_epsilon
-                for i in range(len(x)):
-                    x_pert = x.copy()
-                    x_pert[i] += eps
-                    obj_pert = self.calculate_objective(x_pert, control_times)
-                    grad[i] = (obj_pert - obj_value) / eps
-
-                    # Check for NaN or Inf in gradient
-                    if not np.isfinite(grad[i]):
-                        grad[i] = 0.0
-
-                # Scale gradient
-                grad[:] = grad * OBJECTIVE_SCALE
-
             # Return scaled objective
-            from src.constants import OBJECTIVE_SCALE
             return obj_value * OBJECTIVE_SCALE
 
         # Get bounds from config, default to [0.0, 1.0]
@@ -665,7 +621,7 @@ class UtilityOptimizer:
         s_control_times = np.array(s_control_times)
 
         def objective_wrapper(x, grad):
-            """Dual optimization objective wrapper with gradient computation."""
+            """NLopt objective for joint f and s (derivative-free algorithms only)."""
             # Split combined vector into f and s components
             f_values = x[:n_f_points]
             s_values = x[n_f_points:]
@@ -680,45 +636,7 @@ class UtilityOptimizer:
                 print(f"  s_values: {s_values}")
                 return -1e30  # Return large negative value for invalid objective
 
-            # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
-            if grad.size > 0:
-                from src.constants import OBJECTIVE_SCALE
-                eps = self.base_config.optimization_params.looser_epsilon
-                for i in range(len(x)):
-                    x_pert = x.copy()
-                    # Use smaller perturbation if we're near the upper bound
-                    if i < n_f_points:  # f component
-                        if x_pert[i] + eps > bounds_f[1]:
-                            x_pert[i] -= eps  # Use backward difference instead
-                            obj_pert = self.calculate_objective(x_pert[:n_f_points], f_control_times,
-                                                                x_pert[n_f_points:], s_control_times)
-                            grad[i] = (obj_value - obj_pert) / eps
-                        else:
-                            x_pert[i] += eps
-                            obj_pert = self.calculate_objective(x_pert[:n_f_points], f_control_times,
-                                                                x_pert[n_f_points:], s_control_times)
-                            grad[i] = (obj_pert - obj_value) / eps
-                    else:  # s component
-                        if x_pert[i] + eps > bounds_s[1]:
-                            x_pert[i] -= eps  # Use backward difference instead
-                            obj_pert = self.calculate_objective(x_pert[:n_f_points], f_control_times,
-                                                                x_pert[n_f_points:], s_control_times)
-                            grad[i] = (obj_value - obj_pert) / eps
-                        else:
-                            x_pert[i] += eps
-                            obj_pert = self.calculate_objective(x_pert[:n_f_points], f_control_times,
-                                                                x_pert[n_f_points:], s_control_times)
-                            grad[i] = (obj_pert - obj_value) / eps
-
-                    # Check for NaN or Inf in gradient
-                    if not np.isfinite(grad[i]):
-                        grad[i] = 0.0
-
-                # Scale gradient
-                grad[:] = grad * OBJECTIVE_SCALE
-
             # Return scaled objective
-            from src.constants import OBJECTIVE_SCALE
             return obj_value * OBJECTIVE_SCALE
 
         # Get bounds from config, default to [0.0, 1.0]
@@ -736,11 +654,6 @@ class UtilityOptimizer:
         opt.set_max_objective(objective_wrapper)
         opt.set_maxeval(max_evaluations)
 
-        # For LD_LBFGS, set vector storage (number of corrections to store)
-        # Default is often too small; use larger value for better approximation
-        if algorithm == 'LD_LBFGS':
-            opt.set_vector_storage(20)
-
         if ftol_rel is not None:
             opt.set_ftol_rel(ftol_rel)
         if ftol_abs is not None:
@@ -755,17 +668,6 @@ class UtilityOptimizer:
 
         # Ensure x0 is within bounds (clip to bounds to handle floating point precision issues)
         x0 = np.clip(x0, lower_bounds, upper_bounds)
-
-        # For gradient-based algorithms, test the gradient computation at initial point
-        if algorithm.startswith('LD_') or algorithm.startswith('GD_'):
-            print(f"\n  Testing gradient computation at initial point...")
-            test_grad = np.zeros(len(x0))
-            test_obj = objective_wrapper(x0, test_grad)
-            print(f"  Initial objective value (scaled): {test_obj:.6e}")
-            print(f"  Initial gradient norm: {np.linalg.norm(test_grad):.6e}")
-            print(f"  Gradient min: {np.min(test_grad):.6e}, max: {np.max(test_grad):.6e}")
-            if not np.all(np.isfinite(test_grad)):
-                print(f"  WARNING: {np.sum(~np.isfinite(test_grad))} non-finite gradient components!")
 
         try:
             optimal_x = opt.optimize(x0)
@@ -815,307 +717,16 @@ class UtilityOptimizer:
             'algorithm': algorithm
         }
 
-    def optimize_time_adjustment(self, initial_f_control_points, initial_s_control_points,
-                                max_evaluations, algorithm, ftol_rel, ftol_abs,
-                                xtol_rel, xtol_abs):
-        """
-        Optimize the timing of control points while keeping control values fixed.
-
-        After standard iterative refinement completes, this method adjusts the temporal
-        spacing of control points to maximize the objective function. The control values
-        (f and optionally s) remain fixed at their optimized values, but their timing
-        is adjusted to improve the objective.
-
-        Parameters
-        ----------
-        initial_f_control_points : list of tuples
-            List of (time, f_value) tuples from previous optimization.
-            First and last points remain fixed at t_start and t_end.
-        initial_s_control_points : list of tuples or None
-            List of (time, s_value) tuples from previous optimization.
-            If None, only f times are optimized (single-variable mode).
-            If provided, both f and s times are optimized independently.
-        max_evaluations : int
-            Maximum number of objective function evaluations
-        algorithm : str
-            NLopt algorithm name (e.g., 'LN_SBPLX')
-        ftol_rel : float or None
-            Relative tolerance on objective function
-        ftol_abs : float or None
-            Absolute tolerance on objective function
-        xtol_rel : float or None
-            Relative tolerance on parameters
-        xtol_abs : float or None
-            Absolute tolerance on parameters
-
-        Returns
-        -------
-        dict
-            Optimization results containing:
-            - 'optimal_values': optimal f values (unchanged from input)
-            - 'optimal_objective': maximum utility achieved with adjusted times
-            - 'n_evaluations': number of objective evaluations used
-            - 'control_points': list of (adjusted_time, f_value) tuples
-            - 's_control_points': list of (adjusted_time, s_value) tuples (if s provided)
-            - 'status': optimization status string
-            - 'termination_code': NLopt termination code
-            - 'termination_name': human-readable termination reason
-            - 'algorithm': algorithm name used
-
-        Notes
-        -----
-        Parameterization for each interior point n (where n = 1 to N-2):
-            t_new[n] = ctrl[n-1] * (t[n+1] - t[n-1]) + t[n-1]
-
-        where ctrl[n-1] bounds ensure minimum dt spacing:
-            - Lower bound: ctrl >= dt / (t[n+1] - t[n-1])  ensures t_new[n] >= t[n-1] + dt
-            - Upper bound: ctrl <= (t[n+1] - dt - t[n-1]) / (t[n+1] - t[n-1])  ensures t_new[n] <= t[n+1] - dt
-            - ctrl = (t[n] - t[n-1]) / (t[n+1] - t[n-1]): stays at current position
-
-        This ensures all control points maintain minimum spacing of dt (the integration timestep),
-        preventing numerical issues while allowing the optimizer to adjust temporal placement.
-
-        For dual optimization (f and s):
-            - Total parameters: (N_f - 2) + (N_s - 2)
-            - f and s times adjusted independently
-            - Different numbers of control points supported
-            - Both f and s times enforce dt spacing constraints
-        """
-        self.n_evaluations = 0
-
-        f_times = np.array([pt[0] for pt in initial_f_control_points])
-        f_values = np.array([pt[1] for pt in initial_f_control_points])
-        n_f = len(f_times)
-        n_f_interior = n_f - 2
-
-        optimize_both = initial_s_control_points is not None
-
-        if optimize_both:
-            s_times = np.array([pt[0] for pt in initial_s_control_points])
-            s_values = np.array([pt[1] for pt in initial_s_control_points])
-            n_s = len(s_times)
-            n_s_interior = n_s - 2
-        else:
-            s_times = None
-            s_values = None
-            n_s_interior = 0
-
-        n_params = n_f_interior + n_s_interior
-
-        if n_params == 0:
-            result = {
-                'optimal_values': f_values,
-                'optimal_objective': self.calculate_objective(
-                    f_values, f_times,
-                    s_values if optimize_both else None,
-                    s_times if optimize_both else None
-                ),
-                'n_evaluations': self.n_evaluations,
-                'control_points': initial_f_control_points,
-                'status': 'skipped',
-                'termination_code': None,
-                'termination_name': 'NO_INTERIOR_POINTS',
-                'algorithm': algorithm
-            }
-            if optimize_both:
-                result['s_optimal_values'] = s_values
-                result['s_control_points'] = initial_s_control_points
-            return result
-
-        # Get dt constraint from config
-        dt = self.base_config.integration_params.dt
-
-        ctrl_initial = np.zeros(n_params)
-        ctrl_lower = np.zeros(n_params)
-        ctrl_upper = np.ones(n_params)
-
-        # Set bounds for f control points to enforce minimum dt spacing
-        for i in range(n_f_interior):
-            n = i + 1
-            t_left = f_times[n - 1]
-            t_curr = f_times[n]
-            t_right = f_times[n + 1]
-
-            # Current fractional position
-            ctrl_initial[i] = (t_curr - t_left) / (t_right - t_left)
-
-            # Lower bound: ensure t_new[n] >= t_left + dt
-            # t_new[n] = ctrl * (t_right - t_left) + t_left >= t_left + dt
-            # ctrl >= dt / (t_right - t_left)
-            ctrl_lower[i] = dt / (t_right - t_left)
-
-            # Upper bound: ensure t_new[n] <= t_right - dt
-            # t_new[n] = ctrl * (t_right - t_left) + t_left <= t_right - dt
-            # ctrl <= (t_right - dt - t_left) / (t_right - t_left)
-            ctrl_upper[i] = (t_right - dt - t_left) / (t_right - t_left)
-
-        if optimize_both:
-            # Set bounds for s control points to enforce minimum dt spacing
-            for i in range(n_s_interior):
-                n = i + 1
-                t_left = s_times[n - 1]
-                t_curr = s_times[n]
-                t_right = s_times[n + 1]
-
-                # Current fractional position
-                ctrl_initial[n_f_interior + i] = (t_curr - t_left) / (t_right - t_left)
-
-                # Lower bound: ensure minimum dt spacing from left neighbor
-                ctrl_lower[n_f_interior + i] = dt / (t_right - t_left)
-
-                # Upper bound: ensure minimum dt spacing from right neighbor
-                ctrl_upper[n_f_interior + i] = (t_right - dt - t_left) / (t_right - t_left)
-
-        # Ensure initial guess respects bounds (clip if necessary)
-        ctrl_initial = np.clip(ctrl_initial, ctrl_lower, ctrl_upper)
-
-        def reconstruct_times_and_evaluate(ctrl):
-            f_times_new = np.zeros(n_f)
-            f_times_new[0] = f_times[0]
-            f_times_new[-1] = f_times[-1]
-
-            for i in range(n_f_interior):
-                n = i + 1
-                t_left = f_times[n - 1]
-                t_right = f_times[n + 1]
-                f_times_new[n] = ctrl[i] * (t_right - t_left) + t_left
-
-            if optimize_both:
-                s_times_new = np.zeros(n_s)
-                s_times_new[0] = s_times[0]
-                s_times_new[-1] = s_times[-1]
-
-                for i in range(n_s_interior):
-                    n = i + 1
-                    t_left = s_times[n - 1]
-                    t_right = s_times[n + 1]
-                    s_times_new[n] = ctrl[n_f_interior + i] * (t_right - t_left) + t_left
-            else:
-                s_times_new = None
-
-            return self.calculate_objective(
-                f_values, f_times_new,
-                s_values if optimize_both else None,
-                s_times_new if optimize_both else None
-            )
-
-        def objective_wrapper(x, grad):
-            """Time adjustment objective wrapper with gradient computation."""
-            obj_value = reconstruct_times_and_evaluate(x)
-
-            # Check if objective value is valid
-            if not np.isfinite(obj_value):
-                print(f"WARNING: Invalid objective value: {obj_value}")
-                print(f"  x: {x}")
-                return -1e30  # Return large negative value for invalid objective
-
-            # Compute gradient if requested (grad.size > 0 for gradient-based algorithms)
-            if grad.size > 0:
-                from src.constants import OBJECTIVE_SCALE
-                eps = self.base_config.optimization_params.looser_epsilon
-                for i in range(len(x)):
-                    x_pert = x.copy()
-                    x_pert[i] += eps
-                    obj_pert = reconstruct_times_and_evaluate(x_pert)
-                    grad[i] = (obj_pert - obj_value) / eps
-
-                    # Check for NaN or Inf in gradient
-                    if not np.isfinite(grad[i]):
-                        grad[i] = 0.0
-
-                # Scale gradient
-                grad[:] = grad * OBJECTIVE_SCALE
-
-            # Return scaled objective
-            from src.constants import OBJECTIVE_SCALE
-            return obj_value * OBJECTIVE_SCALE
-
-        nlopt_algorithm = getattr(nlopt, algorithm)
-        opt = nlopt.opt(nlopt_algorithm, n_params)
-        opt.set_lower_bounds(ctrl_lower)
-        opt.set_upper_bounds(ctrl_upper)
-        opt.set_max_objective(objective_wrapper)
-        opt.set_maxeval(max_evaluations)
-
-        if ftol_rel is not None:
-            opt.set_ftol_rel(ftol_rel)
-        if ftol_abs is not None:
-            opt.set_ftol_abs(ftol_abs)
-        if xtol_rel is not None:
-            opt.set_xtol_rel(xtol_rel)
-        if xtol_abs is not None:
-            opt.set_xtol_abs(xtol_abs)
-
-        optimal_ctrl = opt.optimize(ctrl_initial)
-        optimal_objective = opt.last_optimum_value()
-        termination_code = opt.last_optimize_result()
-
-        termination_names = {
-            1: 'SUCCESS',
-            2: 'STOPVAL_REACHED',
-            3: 'FTOL_REACHED',
-            4: 'XTOL_REACHED',
-            5: 'MAXEVAL_REACHED',
-            6: 'MAXTIME_REACHED',
-            -1: 'FAILURE',
-            -2: 'INVALID_ARGS',
-            -3: 'OUT_OF_MEMORY',
-            -4: 'ROUNDOFF_LIMITED',
-            -5: 'FORCED_STOP'
-        }
-        termination_name = termination_names.get(termination_code, f'UNKNOWN_{termination_code}')
-
-        f_times_final = np.zeros(n_f)
-        f_times_final[0] = f_times[0]
-        f_times_final[-1] = f_times[-1]
-
-        for i in range(n_f_interior):
-            n = i + 1
-            t_left = f_times[n - 1]
-            t_right = f_times[n + 1]
-            f_times_final[n] = optimal_ctrl[i] * (t_right - t_left) + t_left
-
-        f_control_points_final = list(zip(f_times_final, f_values))
-
-        result = {
-            'optimal_values': f_values,
-            'optimal_objective': optimal_objective,
-            'n_evaluations': self.n_evaluations,
-            'control_points': f_control_points_final,
-            'status': 'success',
-            'termination_code': termination_code,
-            'termination_name': termination_name,
-            'algorithm': algorithm
-        }
-
-        if optimize_both:
-            s_times_final = np.zeros(n_s)
-            s_times_final[0] = s_times[0]
-            s_times_final[-1] = s_times[-1]
-
-            for i in range(n_s_interior):
-                n = i + 1
-                t_left = s_times[n - 1]
-                t_right = s_times[n + 1]
-                s_times_final[n] = optimal_ctrl[n_f_interior + i] * (t_right - t_left) + t_left
-
-            s_control_points_final = list(zip(s_times_final, s_values))
-            result['s_optimal_values'] = s_values
-            result['s_control_points'] = s_control_points_final
-
-        return result
-
     def optimize_with_iterative_refinement(self, n_iterations, initial_guess_scalar,
                                           max_evaluations_initial, max_evaluations_final,
-                                          max_evaluations_time_points, algorithm=None,
+                                          algorithm=None,
                                           ftol_rel=None, ftol_abs=None,
                                           xtol_rel=None, xtol_abs=None,
                                           n_points_final=None,
                                           n_points_initial=2,
                                           initial_guess_s_scalar=None,
                                           n_points_final_s=None,
-                                          n_points_initial_s=2,
-                                          optimize_time_points=False):
+                                          n_points_initial_s=2):
         """
         Optimize using iterative refinement with progressively finer control grids.
 
@@ -1136,10 +747,8 @@ class UtilityOptimizer:
             Maximum objective function evaluations for first iteration
         max_evaluations_final : int
             Maximum objective function evaluations for final iteration
-        max_evaluations_time_points : int
-            Maximum objective function evaluations for time adjustment optimization (when optimize_time_points=True)
         algorithm : str, optional
-            NLopt algorithm name. If None, defaults to 'LN_SBPLX'.
+            Derivative-free NLopt algorithm name (LN_* or GN_*). If None, defaults to 'LN_SBPLX'.
         ftol_rel : float, optional
             Relative tolerance on objective function changes
         ftol_abs : float, optional
@@ -1163,10 +772,6 @@ class UtilityOptimizer:
         n_points_initial_s : int, optional
             Number of s control points in first iteration. Default: 2
             Used with n_points_final_s to determine refinement base for s.
-        optimize_time_points : bool, optional
-            If True, runs time adjustment optimization after standard iterations complete.
-            Adjusts temporal spacing of control points while keeping values fixed.
-            Default: False (disabled for backward compatibility)
 
         Returns
         -------
@@ -1244,9 +849,14 @@ class UtilityOptimizer:
         iteration_s_control_grids = [] if optimize_f_and_s else None
         total_evaluations = 0
 
+        iteration_algorithm = algorithm if algorithm is not None else 'LN_SBPLX'
+        # Objective wrappers never fill NLopt's gradient, so derivative-based (xD_*) algorithms
+        # would silently see a zero gradient.
+        if iteration_algorithm[1] == 'D':
+            raise ValueError(f"Algorithm {iteration_algorithm} needs gradients; use a derivative-free "
+                             f"NLopt algorithm (LN_* or GN_*).")
+
         for iteration in range(1, n_iterations + 1):
-            # Get algorithm for this iteration
-            iteration_algorithm = self.base_config.optimization_params.get_algorithm_for_iteration(iteration)
 
             # Calculate max_evaluations for this iteration
             if n_iterations == 1:
@@ -1330,8 +940,6 @@ class UtilityOptimizer:
             print(f"\n{'=' * 80}")
             print(f"  ITERATION {iteration}/{n_iterations}")
             print(f"  Algorithm: {iteration_algorithm}")
-            if requires_gradient(iteration_algorithm):
-                print(f"    (gradient-based, using numerical derivatives)")
             print(f"  Max evaluations: {iteration_max_evaluations}")
 
             # Print spacing parameters (growth rates or explicit times indicator)
@@ -1393,7 +1001,6 @@ class UtilityOptimizer:
             total_evaluations += opt_result['n_evaluations']
 
             # Unscale objective for display (it was scaled by OBJECTIVE_SCALE in the wrapper)
-            from src.constants import OBJECTIVE_SCALE
             unscaled_objective = opt_result['optimal_objective'] / OBJECTIVE_SCALE
 
             print(f"\nIteration {iteration} complete:")
@@ -1407,64 +1014,6 @@ class UtilityOptimizer:
             sys.stdout.flush()
 
         final_result = iteration_history[-1]
-
-        if optimize_time_points:
-            n_points_f = len(final_result['control_points'])
-            print(f"\n{'=' * 80}")
-            print(f"  TIME ADJUSTMENT OPTIMIZATION")
-            print(f"  Optimizing temporal placement of {n_points_f} control points")
-            print(f"  Keeping control values fixed")
-            print(f"{'=' * 80}\n")
-
-            time_opt_start_time = time.time()
-
-            time_opt_result = self.optimize_time_adjustment(
-                final_result['control_points'],
-                final_result.get('s_control_points', None),
-                max_evaluations_time_points,
-                algorithm if algorithm is not None else 'LN_SBPLX',
-                ftol_rel,
-                ftol_abs,
-                xtol_rel,
-                xtol_abs
-            )
-
-            time_opt_elapsed_time = time.time() - time_opt_start_time
-
-            time_opt_result['iteration'] = n_iterations + 1
-            time_opt_result['n_control_points'] = len(time_opt_result['control_points'])
-            time_opt_result['elapsed_time'] = time_opt_elapsed_time
-            if 's_control_points' in time_opt_result and time_opt_result['s_control_points'] is not None:
-                time_opt_result['n_s_control_points'] = len(time_opt_result['s_control_points'])
-
-            # Add time-adjusted grids to the control grids lists
-            f_times_adjusted = np.array([pt[0] for pt in time_opt_result['control_points']])
-            iteration_f_control_grids.append(f_times_adjusted)
-            if optimize_f_and_s and iteration_s_control_grids is not None:
-                s_times_adjusted = np.array([pt[0] for pt in time_opt_result['s_control_points']])
-                iteration_s_control_grids.append(s_times_adjusted)
-
-            final_result = time_opt_result
-            iteration_history.append(time_opt_result)
-            total_evaluations += time_opt_result['n_evaluations']
-
-            # Unscale objective for display
-            from src.constants import OBJECTIVE_SCALE
-            unscaled_objective = time_opt_result['optimal_objective'] / OBJECTIVE_SCALE
-
-            print(f"\nTime adjustment complete:")
-            print(f"  Objective value: {unscaled_objective:.12e}")
-            print(f"  Evaluations: {time_opt_result['n_evaluations']}")
-            print(f"  Elapsed time: {time_opt_elapsed_time:.2f} seconds")
-            print(f"  Status: {time_opt_result['termination_name']}")
-            print(f"\n  Optimized control points (time, f_value):")
-            for pt in time_opt_result['control_points']:
-                print(f"    ({float(pt[0])}, {float(pt[1])})")
-            if 's_control_points' in time_opt_result and time_opt_result['s_control_points'] is not None:
-                print(f"\n  Optimized s control points (time, s_value):")
-                for pt in time_opt_result['s_control_points']:
-                    print(f"    ({float(pt[0])}, {float(pt[1])})")
-            sys.stdout.flush()
 
         result = {
             'optimal_values': final_result['optimal_values'],

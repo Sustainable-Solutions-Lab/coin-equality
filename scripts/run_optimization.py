@@ -317,7 +317,6 @@ def main():
         initial_guess_scalar=opt_params.initial_guess_f,
         max_evaluations_initial=opt_params.max_evaluations_initial,
         max_evaluations_final=opt_params.max_evaluations_final,
-        max_evaluations_time_points=opt_params.max_evaluations_time_points,
         algorithm=opt_params.algorithm,
         ftol_rel=opt_params.ftol_rel,
         ftol_abs=opt_params.ftol_abs,
@@ -327,8 +326,7 @@ def main():
         n_points_initial=opt_params.n_points_initial_f,
         initial_guess_s_scalar=opt_params.initial_guess_s,
         n_points_final_s=opt_params.n_points_final_s,
-        n_points_initial_s=opt_params.n_points_initial_s,
-        optimize_time_points=opt_params.optimize_time_points
+        n_points_initial_s=opt_params.n_points_initial_s
     )
     n_final_control_points = len(opt_results['control_points'])
 

@@ -376,9 +376,6 @@ class OptimizationParameters:
         Intermediate iterations scale as: round(1 + (max_initial - 1) * base^(iteration - 1))
         Example: With max_initial=5000, max_final=30000, n_iterations=3:
             Iteration 1: 5000, Iteration 2: 12247, Iteration 3: 30000
-    max_evaluations_time_points : int
-        Maximum number of objective function evaluations for time adjustment optimization.
-        Only used when optimize_time_points = True.
     optimization_iterations : int
         Number of refinement iterations.
         Iteration 1: n_points_initial control points at t_start and t_end
@@ -389,27 +386,11 @@ class OptimizationParameters:
     initial_guess_f : float
         Initial f value for all control points in first iteration.
         Must satisfy 0 ≤ f ≤ 1.
-    algorithm : str or list of str, optional
-        NLopt algorithm to use. If None, defaults to 'LN_SBPLX'.
-
-        Can be specified as:
-        - Single string: same algorithm for all iterations (e.g., 'LN_SBPLX')
-        - List of strings: different algorithm per iteration, length must equal optimization_iterations
-          Example: ["GN_ISRES", "LN_SBPLX", "LD_SLSQP"] for progressive refinement
-
-        Algorithm categories:
-        - 'LN_*': Local, derivative-free (LN_SBPLX, LN_BOBYQA, LN_COBYLA, LN_NELDERMEAD)
-          Fast, robust for noisy objectives. No gradient computation overhead.
-        - 'LD_*': Local, derivative-based (LD_SLSQP, LD_MMA, LD_LBFGS, LD_CCSAQ)
-          Uses numerical gradients (N+1 evaluations per gradient). Better convergence for smooth objectives.
-          Recommended for final polishing after derivative-free convergence.
-        - 'GN_*': Global, derivative-free (GN_ISRES, GN_DIRECT_L)
-          Explores parameter space broadly. Good for avoiding local minima.
-
-        Progressive refinement strategy:
-        ["GN_ISRES", "LN_SBPLX", "LD_SLSQP"] = global exploration → local refinement → gradient polish
-
-        See NLopt documentation for full list.
+    algorithm : str, optional
+        Derivative-free NLopt algorithm used for every iteration. If None, defaults to 'LN_SBPLX'.
+        - 'LN_*': local, derivative-free (LN_SBPLX, LN_BOBYQA, LN_COBYLA, LN_NELDERMEAD)
+        - 'GN_*': global, derivative-free (GN_ISRES, GN_DIRECT_L)
+        Derivative-based algorithms (LD_*, GD_*) are rejected: no gradients are computed.
     ftol_rel : float, optional
         Relative tolerance on objective function changes.
         Stops when |Δf| < ftol_rel * |f|.
@@ -462,22 +443,12 @@ class OptimizationParameters:
     bounds_s : list of [float, float], optional
         Bounds for s values as [min, max]. Default: [0.0, 1.0]
         Example: [0.2, 0.3] to constrain savings rate between 20% and 30%
-    optimize_time_points : bool, optional
-        Enable time adjustment optimization phase after standard iterations.
-        When True, adjusts temporal spacing of control points while keeping values fixed.
-        This allows optimizer to concentrate control points where changes matter most.
-        Only applies to iterative refinement mode. Default: False (disabled)
-    looser_epsilon : float
-        Perturbation size for numerical gradient computation via finite differences.
-        Used in gradient-based optimization (LD_* algorithms).
-        Default: 1e-8
     """
     max_evaluations_initial: int
     max_evaluations_final: int
-    max_evaluations_time_points: int
     optimization_iterations: int
     initial_guess_f: object  # list or float
-    algorithm: object = None  # str or list[str]
+    algorithm: str = None
     ftol_rel: float = None
     ftol_abs: float = None
     xtol_rel: float = None
@@ -489,8 +460,12 @@ class OptimizationParameters:
     n_points_initial_s: int = 2
     bounds_f: list = None  # [min, max] for f, defaults to [0.0, 1.0]
     bounds_s: list = None  # [min, max] for s, defaults to [0.0, 1.0]
+    # Obsolete keys still present in the published configs (time-point adjustment and
+    # gradient-based optimization were removed); accepted and ignored until the configs
+    # are migrated to the new schema.
+    max_evaluations_time_points: int = None
     optimize_time_points: bool = False
-    looser_epsilon: float = 1e-8  # Perturbation size for numerical gradients
+    looser_epsilon: float = None
 
     def __post_init__(self):
         """Validate optimization parameters."""
@@ -517,45 +492,6 @@ class OptimizationParameters:
                     raise ValueError("n_points_final_s list cannot be empty")
                 # Sort the list (user may have provided unsorted)
                 self.n_points_final_s = sorted(self.n_points_final_s)
-
-    def get_algorithm_for_iteration(self, iteration):
-        """
-        Get the algorithm to use for a specific iteration.
-
-        Parameters
-        ----------
-        iteration : int
-            Iteration number (1-based)
-
-        Returns
-        -------
-        str
-            Algorithm name for this iteration
-
-        Notes
-        -----
-        If algorithm is a string, returns that algorithm for all iterations.
-        If algorithm is a list, returns the algorithm for the specified iteration.
-        If algorithm is None, returns 'LN_SBPLX' (default).
-
-        List length must match optimization_iterations (fail-fast validation).
-        """
-        if self.algorithm is None:
-            return 'LN_SBPLX'
-        elif isinstance(self.algorithm, str):
-            return self.algorithm
-        elif isinstance(self.algorithm, list):
-            if len(self.algorithm) != self.optimization_iterations:
-                raise ValueError(
-                    f"Algorithm list length ({len(self.algorithm)}) must match "
-                    f"optimization_iterations ({self.optimization_iterations})"
-                )
-            return self.algorithm[iteration - 1]
-        else:
-            raise ValueError(
-                f"Invalid algorithm type: {type(self.algorithm).__name__}. "
-                f"Must be str, list, or None."
-            )
 
 
 @dataclass
