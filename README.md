@@ -39,13 +39,15 @@ This project develops a stylized climate-economy model that incorporates income 
 2. **Progressive taxation** - a continuous equal-utility-loss tax schedule parameterized by a single Tax Progressivity Parameter τ (code name: `tax_equity`)
 3. **Income-dependent climate damage** - climate damage distributed across incomes via a power-law controlled by the Climate Damage Vulnerability Exponent β (code name: `y_damage_distribution_exponent`; positive values shift damage toward lower incomes; zero gives uniform damage)
 
-The model optimizes time trajectories to maximize discounted aggregate utility, jointly optimizing the carbon pricing trajectory f(t) and the savings rate s(t) as independent control variables (free savings rate, `bounds_s = [0.0, 1.0]`). All manuscript results use this configuration.
+The model optimizes time trajectories to maximize discounted aggregate utility, jointly optimizing the carbon pricing trajectory f(t) and the savings rate s(t) as independent control variables (free savings rate between 0 and 1). All manuscript results use this configuration.
+
+The code was cleaned up in October 2026 without changing results: forward runs are bit-identical to the release code and re-optimized reference cases match the published runs. [REFACTOR.md](REFACTOR.md) explains what changed, including the configuration format, and how the results were verified.
 
 ## Installation and Requirements
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.9 or higher (developed and tested with Python 3.10 and NumPy 2.2)
 - pip package manager
 
 ### Installing Dependencies
@@ -57,13 +59,13 @@ pip install -r requirements.txt
 ```
 
 Required packages include:
-- numpy - numerical computations
-- scipy - scientific computing and optimization
+- numpy (2.0 or later) - numerical computations
+- scipy - quadrature nodes, interpolation and root finding
 - pandas - data manipulation and analysis
 - matplotlib - plotting and visualization
 - nlopt - nonlinear optimization
-- mpmath - hypergeometric functions in climate damage calculations
 - openpyxl - Excel file generation
+- pytest - the regression test suite (see [Testing](#testing))
 
 ## Quick Start
 
@@ -113,7 +115,7 @@ Simulation results are in **`data/output/prod_s/`** and the manuscript figure sc
 | SI Fig 2 (growth contour) | `scripts/prod-s/figures/figS/plot_si2_growth_contour.py` | `data/output/prod_s/9cases_s/` (included) |
 | SI Fig 3 (DICE reference) | `scripts/prod-s/figures/plot_dice_reference_si.py` | Cached run extractions in `outputs/audits/` (included) |
 
-Figures 1, 2, 5, SI 2, and SI 3 regenerate directly from this repository. Figures 3 and 4 require the full simulation outputs (see Data Availability). `json/prod_s/` contains the exact configuration file of **every run whose result appears in a figure** (14,801 configs), so every simulation behind the manuscript can be re-run with `scripts/run_optimization.py`.
+Figures 1, 2, 5, SI 2, and SI 3 regenerate directly from this repository. Figures 3 and 4 require the full simulation outputs (see Data Availability). `json/prod_s/` contains the configuration file of **every run whose result appears in a figure** (14,801 configs), so every simulation behind the manuscript can be re-run with `scripts/run_optimization.py`. These configurations were converted to the current configuration format in the 2026 cleanup, with the same parameter values (see [REFACTOR.md](REFACTOR.md)); the files exactly as published are in the public release and in this repository's initial commit (`484bfd70`).
 
 ### SI data files
 
@@ -134,10 +136,10 @@ Included in this repository:
 
 | Directory | Contents |
 |-----------|----------|
-| `data/output/prod_s/9cases_s/` | 9 reference-case runs (complete outputs: results, optimization summary, distributions xlsx, config) |
+| `data/output/prod_s/9cases_s/` | 9 reference-case runs (complete outputs: results, optimization summary, distributions xlsx, run status, terminal log, and the config in the current format) |
 | `data/output/prod_s/figures/` | Final manuscript figure PDFs |
 | `data/si_datafiles/` | Per-figure data files (see above) |
-| `json/prod_s/` | Configuration files for all 14,801 figure-used runs |
+| `json/prod_s/` | Configuration files for all 14,801 figure-used runs (current format) |
 | `outputs/audits/` | Fig 5 dataset and cached extractions for SI Fig 3 |
 
 The full Monte Carlo, parameter sweep, and contour grid outputs (~22 GB) are not included. <!-- Zenodo/archive DOI to be added -->
@@ -149,17 +151,19 @@ The full Monte Carlo, parameter sweep, and contour grid outputs (~22 GB) are not
 The model optimizes the time-integral of aggregate utility by choosing two control trajectories:
 
 ```
-max∫₀^∞ e^(-ρt) · U(t) · L(t) dt
+max ∫ e^(-ρ(t - t_start)) · U(t) · L(t) dt     over t_start ≤ t ≤ t_end (2020-2420 in all manuscript runs)
 ```
 
-where:
+evaluated with the trapezoidal rule on the annual integration time grid, where:
 - ρ = pure rate of time preference
 - U(t) = mean utility of the population at time t
 - L(t) = population at time t
 
 Control variables:
 - f(t) = log₁₀(optimal carbon price) in $/tCO₂
-- s(t) = savings rate (fraction of output invested in capital) — optimized jointly with f(t) in the free savings rate variant (`prod_s`), or prescribed exogenously in the fixed savings rate variant (`prod`)
+- s(t) = savings rate (fraction of output invested in capital) — optimized jointly with f(t) when the configuration has an `optimization_parameters.controls.s` entry (all manuscript runs), otherwise prescribed by `time_functions.s`
+
+Each optimized control is represented by its values at a set of control times and interpolated in between (PCHIP). The optimization refines the control grid over several iterations with a derivative-free NLopt algorithm (LN_SBPLX in all manuscript runs), starting each iteration from the previous solution.
 
 ### Core Components
 
@@ -214,7 +218,7 @@ To construct a Lorenz curve for an arbitrary Gini coefficient G, we use linear i
 L(F) = (1 - G/Gini_base)·F + (G/Gini_base)·L_base(F)
 ```
 
-This formulation is controlled by the `use_empirical_lorenz` boolean parameter in the configuration.
+This formulation is controlled by the `use_empirical_lorenz` boolean parameter in the configuration. All manuscript runs use the empirical Lorenz curve. The Pareto-Lorenz alternative is not used for any result, and with the standard 32 quadrature points it is integrated inaccurately (its income density is singular at the top of the distribution); see [REFACTOR.md](REFACTOR.md).
 
 #### Consumption Discount Rate (Welfare-Weighted Ramsey Rule)
 
@@ -277,9 +281,9 @@ The model uses several time-dependent exogenous functions specified in the `time
 | `emission_ratio` | CO2-equivalent to CO2 ratio (accounts for non-CO2 GHGs) | exponential_growth |
 | `Eland` | Total land emissions (tCO2/yr) | exponential_growth |
 
-**emission_ratio**: Converts industrial CO2 emissions to CO2-equivalent emissions by accounting for non-CO2 greenhouse gases (e.g., methane, N2O). Uses exponential decline from 1.40 in 2020 to 1.21 in 2100 (Barrage & Nordhaus 2023).
+**emission_ratio**: Converts industrial CO2 emissions to CO2-equivalent emissions by accounting for non-CO2 greenhouse gases (e.g., methane, N2O). Uses exponential decline from 1.40 in 2020 to 1.18 in 2100 (Barrage & Nordhaus 2023).
 
-**Eland**: Exogenous land-use emissions that decline exponentially over time. At t_base=2020, Eland ≈ 4.5 GtCO2/yr with a decline rate of -2.107%/yr.
+**Eland**: Exogenous land-use emissions that decline exponentially over time: 5.9 GtCO2/yr at t_base = 2020, declining at 2.107%/yr.
 
 ### Policy Configuration
 
@@ -317,7 +321,7 @@ At `η = 1`, `η_eff = 1` for any `tax_equity` and the knob is degenerate — th
 - For `η_eff ≠ 1`: `c(F) = [y(F)^(1−η_eff) − (1−η_eff)K]^(1/(1−η_eff))`
 - For `η_eff = 1`: `c(F) = y(F) · exp(−K)`
 
-`K` is solved numerically via Brent's method in log-K space, in normalized income units so the solver is stable at large `η_eff` and realistic income scales. The revenue constraint is `∫₀¹ [y(F) − c(F)] dF = tax_amount`.
+`K` (`deltaU` in the code) is solved numerically via Brent's method in log-K space, in normalized income units so the solver is stable at large `η_eff` and realistic income scales. The revenue constraint is `∫₀¹ [y(F) − c(F)] dF = tax_amount`.
 
 **Derivation:** Starting from `U = c^(1−η)/(1−η)` (so `dc/du = c^η` for equal utility loss), take a marginal tax rate `r = r0·c^(η_tax)`. Tax amount per person is `tax = r·c = r0·c^(η_tax+1)`. Iterating that infinitesimally to a finite revenue yields the ODE `dc/dt = −r0·c^(η_tax+1)`, whose closed form is the schedule above with `η_eff = η_tax + 1`. Monotonicity `dc/dy > 0` holds automatically, so no explicit iteration loop is needed.
 

@@ -4,6 +4,7 @@
 - This is `coin-equality-refactor`, a private working copy of the public release in `Sustainable-Solutions-Lab/coin-equality` (the code and data accompanying the manuscript "Income inequality increases optimal carbon price"), made so the code can be cleaned up without touching the release
 - Remotes: `origin` is this repo; `upstream` is the public release and is fetch-only (its push URL is set to `DISABLED`). Never push to or re-enable pushing to `upstream`
 - `README.md` describes the release layout, how to run optimizations, and which script and data reproduce each manuscript figure
+- `REFACTOR.md` explains the October 2026 cleanup (what changed relative to the release, the configuration format, how results were verified)
 - Python environment: the repo `.venv` (`pip install -r requirements.txt`); run tools as `.venv/bin/python`, `.venv/bin/pytest`
 
 ## Coding Philosophy

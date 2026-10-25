@@ -1,6 +1,6 @@
 # The 2026 cleanup of the COIN_equality code
 
-This document explains the cleanup done in October 2026 on branch `refactor-cleanup`. It covers what changed, how we made sure results did not change, and what to know when working with the cleaned-up code.
+This document explains the cleanup done in October 2026 on branch `refactor-cleanup` and then merged into `main`. It covers what changed, how we made sure results did not change, and what to know when working with the cleaned-up code.
 
 The starting point was the code of the public release (`Sustainable-Solutions-Lab/coin-equality`, commit `fb5965c3` in this repo). It had grown organically:
 - three near-identical copies of the NLopt optimizer setup;
@@ -153,6 +153,8 @@ These were deliberate:
 
    All other columns keep their names, order and values. No figure script reads the removed ones.
 5. **`run_integration.py` also writes `plots_full.pdf`**, as `run_optimization.py` does. In its configuration-file mode, a prescribed savings rate now works.
+6. **Requirements.** `requirements.txt` now requires NumPy 2.0 or later, and so Python 3.9 or later; the code uses `np.trapezoid`, which older NumPy lacks, although the release listed NumPy 1.24. The unused `mpmath` was removed.
+7. **README corrections.** The README now gives the values the configurations actually use: land-use emissions of 5.9 GtCO₂/yr in 2020 (not ≈4.5), and an emission ratio of 1.18 in 2100 (not 1.21). It also describes the finite 2020–2420 horizon of the objective.
 
 Otherwise, the results CSV and the optimization summary are byte-identical to what the old code wrote, and the distributions workbook is identical cell by cell.
 
@@ -198,3 +200,7 @@ Otherwise, the results CSV and the optimization summary are byte-identical to wh
 | `f82bb129` | Separate data output from plotting |
 | `97ebb762` | Slim the run scripts |
 | `06d5ac0b` | Documentation (README, CLAUDE.md) |
+| `cad9757b` | This document |
+| `4904240c` | Re-optimization results for gid-5 and gid-9 |
+
+A final commit updated this document, the README and `requirements.txt` for the merge into `main`.
