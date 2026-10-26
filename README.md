@@ -41,7 +41,7 @@ This project develops a stylized climate-economy model that incorporates income 
 
 The model optimizes time trajectories to maximize discounted aggregate utility, jointly optimizing the carbon pricing trajectory f(t) and the savings rate s(t) as independent control variables (free savings rate between 0 and 1). All manuscript results use this configuration.
 
-The code was cleaned up in October 2026 without changing results: forward runs are bit-identical to the release code and re-optimized reference cases match the published runs. [REFACTOR.md](REFACTOR.md) explains what changed, including the configuration format, and how the results were verified.
+The code was cleaned up in October 2026 without changing results: forward runs are bit-identical to the release code and re-optimized reference cases match the published runs. [REFACTOR.md](REFACTOR.md) explains what changed, including the configuration format, and how the results were verified. [METHODS_DETAIL.md](methods/METHODS_DETAIL.md) specifies every formula, constant and numerical procedure, including parameter estimation and figure processing, precisely enough to reimplement the model and reproduce its numbers.
 
 ## Installation and Requirements
 
@@ -374,6 +374,9 @@ Tolerances are relative to each variable's magnitude: 1e-12 without iterative so
 coin-equality/
 ├── README.md                          # This file
 ├── REFACTOR.md                        # The 2026 cleanup: what changed and how results were verified
+├── methods/                           # Full methods specification
+│   ├── METHODS_DETAIL.md              # Implementation-level specification, for reimplementation and verification
+│   └── methods.tex, methods.pdf       # The same methods as mathematics (LaTeX), for the paper
 ├── LICENSE                            # MIT (code); data files CC-BY-4.0
 ├── requirements.txt                   # Python dependencies
 ├── src/                               # Core library modules

@@ -1,10 +1,11 @@
 # Claude Code Style Guide for COIN_equality
 
 ## Repository Context
-- This is `coin-equality-refactor`, a private working copy of the public release in `Sustainable-Solutions-Lab/coin-equality` (the code and data accompanying the manuscript "Income inequality increases optimal carbon price"), made so the code can be cleaned up without touching the release
+- This is `coin-equality` (private, `Sustainable-Solutions-Lab/coin-equality`; named `coin-equality-refactor` until 2026-10-26), the development copy of the public release in `Sustainable-Solutions-Lab/coin-equality-pnas` (the code and data accompanying the manuscript "Income inequality increases optimal carbon price"), made so the code can be cleaned up and developed without touching the release
 - Remotes: `origin` is this repo; `upstream` is the public release and is fetch-only (its push URL is set to `DISABLED`). Never push to or re-enable pushing to `upstream`
 - `README.md` describes the release layout, how to run optimizations, and which script and data reproduce each manuscript figure
 - `REFACTOR.md` explains the October 2026 cleanup (what changed relative to the release, the configuration format, how results were verified)
+- `methods/METHODS_DETAIL.md` specifies the methods (every formula, constant, branch condition and numerical procedure, plus parameter estimation and figure processing) precisely enough to reimplement the model bit for bit; `methods/methods.tex` (compiled to `methods/methods.pdf`) states the same methods as mathematics for the paper. Keep both in step with any change to the model
 - Python environment: the repo `.venv` (`pip install -r requirements.txt`); run tools as `.venv/bin/python`, `.venv/bin/pytest`
 
 ## Coding Philosophy

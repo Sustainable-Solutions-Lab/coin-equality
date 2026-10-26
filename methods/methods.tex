@@ -1,0 +1,1398 @@
+% Supporting Information: detailed methods for
+% "Income inequality increases optimal carbon price" (Papargyri & Caldeira).
+%
+% Written from methods/METHODS_DETAIL.md in the model repository. That document is the
+% implementation-level reference (file and function names, floating-point
+% evaluation order, regression tests); this one states the same methods as
+% mathematics, for the Supporting Information of the paper.
+%
+% Lines beginning "% AUTHOR NOTE" mark points the authors should decide on or
+% verify before submission. They do not appear in the compiled PDF.
+
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage[hidelinks]{hyperref}
+
+\renewcommand{\thesection}{S\arabic{section}}
+\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\thetable}{S\arabic{table}}
+
+% Wider number boxes in the table of contents for "S10"-style numbers
+% (article.cls definitions with larger widths).
+\makeatletter
+\renewcommand*\l@section[2]{%
+  \ifnum \c@tocdepth >\z@
+    \addpenalty\@secpenalty
+    \addvspace{1.0em \@plus\p@}%
+    \setlength\@tempdima{2.4em}%
+    \begingroup
+      \parindent \z@ \rightskip \@pnumwidth
+      \parfillskip -\@pnumwidth
+      \leavevmode \bfseries
+      \advance\leftskip\@tempdima
+      \hskip -\leftskip
+      #1\nobreak\hfil
+      \nobreak\hb@xt@\@pnumwidth{\hss #2\kern-\p@\kern\p@}\par
+    \endgroup
+  \fi}
+\renewcommand*\l@subsection{\@dottedtocline{2}{2.4em}{3.4em}}
+\makeatother
+\setlength{\emergencystretch}{2em}
+
+\newcommand{\clip}{\operatorname{clip}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\Lor}{\mathcal{L}}
+\newcommand{\etat}{\eta_{\tau}}
+\newcommand{\yg}{y_{\mathrm{g}}}
+\newcommand{\yd}{y_{\mathrm{d}}}
+\newcommand{\yn}{y_{\mathrm{n}}}
+\newcommand{\ya}{y_{\mathrm{a}}}
+\newcommand{\Ecum}{E_{\mathrm{cum}}}
+\newcommand{\Eland}{E_{\mathrm{land}}}
+\newcommand{\epot}{e_{\mathrm{pot}}}
+\newcommand{\Omb}{\Omega_{\mathrm{b}}}
+\newcommand{\yref}{y_{\mathrm{ref}}}
+\newcommand{\tb}{t_{\mathrm{b}}}
+\newcommand{\Nq}{N_{q}}
+\newcommand{\tc}{t^{\mathrm{c}}}
+
+\title{Supporting Information\\[4pt]
+\large Detailed methods for ``Income inequality increases optimal carbon price''}
+\author{Lamprini Papargyri and Ken Caldeira}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\noindent
+This Supporting Information specifies the model, the numerical procedures, the
+design of the simulation experiments, the estimation of the model's exogenous
+inputs and the construction of the figures. Together with the configuration
+file of each run and the results archived with the code, it is intended to
+determine every reported number. A companion document in the code repository
+(\texttt{methods/METHODS\_DETAIL.md}) gives the same specification at the level of the
+implementation, including the floating-point evaluation order needed to
+reproduce results bit for bit.
+
+\tableofcontents
+
+%======================================================================
+\section{Overview and reproducibility}
+\label{sec:overview}
+%======================================================================
+
+The model is a stylized, globally aggregated climate--economy model in the
+tradition of DICE~\cite{BarrageNordhaus2024} and COIN~\cite{Caldeira2023},
+extended with a continuous income distribution. Output is produced by a
+Cobb--Douglas technology and is reduced by climate damage and by the cost of
+emission abatement. Damage is distributed across the income distribution
+according to a vulnerability exponent $\beta$, and the cost of abatement is
+raised by a tax whose progressivity is set by a parameter $\tau$. Warming is
+computed from cumulative emissions with a three-mode impulse-response model.
+Two control trajectories, the carbon price (equivalently the marginal abatement
+cost) and the savings rate, are chosen to maximize the discounted sum of
+population-weighted mean utility.
+
+The calculation has three stages, which are reproducible to different degrees.
+\begin{enumerate}
+  \item \emph{Forward integration} of the model for given control trajectories
+  (Sections~\ref{sec:inputs}--\ref{sec:derived}) is deterministic. Replaying
+  the published optimal controls through the model reproduces every published
+  time series to a relative difference of $3.4\times10^{-13}$ or less.
+  \item \emph{The objective} (Section~\ref{sec:objective}) inherits the
+  precision of the forward integration.
+  \item \emph{The optimization} (Sections~\ref{sec:controls}
+  and~\ref{sec:optimization}) uses a deterministic derivative-free algorithm,
+  but the path it takes depends on every bit of every objective value, so
+  implementations that differ only by round-off end at slightly different
+  points. Re-optimizing manuscript runs with code whose objective values
+  differ from the original only by round-off reproduced the objective to
+  $10^{-13}$ (relative), the control $f$ to about $3\times10^{-6}$, and the
+  carbon price in 2030 and 2100 and the warming in 2100 to $2\times10^{-6}$
+  (relative).
+\end{enumerate}
+An independent reimplementation of the model and the optimizer, written only
+from the repository specification without access to the model's source code,
+reproduced the regression baseline (Section~\ref{sec:verification}) bit for
+bit.
+% AUTHOR NOTE: the independent reimplementation was written by an AI coding
+% agent (2026-10-26). Decide whether and how to disclose this.
+
+All arithmetic is IEEE-754 double precision. The reference results were
+produced with Python~3.10.12, NumPy~2.2.6~\cite{Harris2020},
+SciPy~1.15.3~\cite{Virtanen2020} and the NLopt optimization
+library~\cite{NLopt}.
+% AUTHOR NOTE: the NLopt version used for the 2026 production runs was not
+% recorded; 2.11.0 is the version of the test environment.
+
+%======================================================================
+\section{Conventions and notation}
+\label{sec:notation}
+%======================================================================
+
+\paragraph{Time.} The model time $t$ is the calendar year. Exogenous time
+functions and control times are expressed in relative time $t_r = t - \tb$,
+with $\tb = 2020$. The integration runs from $t_0 = 2020$ to $t_{\mathrm{end}}
+= 2420$ with time step $\Delta t = 1$~yr.
+
+\paragraph{Units.} Monetary quantities are in 2019 US dollars (the DICE-2023
+convention), and income is in dollars per person per year. Emissions are in
+tCO$_2$ (cumulative) or tCO$_2$~yr$^{-1}$ (rates), and temperature is in
+$^\circ$C above preindustrial.
+
+\paragraph{Per-capita and aggregate quantities.} Lower-case symbols denote
+per-capita quantities and upper-case symbols denote totals; for example,
+gross output is $Y_{\mathrm{g}} = \yg L$ for population $L$.
+
+\paragraph{Population rank.} $F\in[0,1]$ is the rank in the income
+distribution, with $F=0$ the poorest. The Lorenz curve $\Lor(F)$ is the share
+of total income received by the poorest fraction $F$ of the population, so
+that income at rank $F$ is proportional to $\Lor'(F)$, which has mean one.
+
+\paragraph{Clipping.} We write $\clip(x; a, b) = \min\{\max\{x, a\}, b\}$.
+Several quantities are bounded away from zero or one by the small constant
+$\varepsilon = 10^{-12}$; these safeguards are collected in
+Section~\ref{sec:caveats}.
+
+\paragraph{Principal symbols.} Table~\ref{tab:symbols} lists the symbols used
+in the model equations.
+
+\begin{longtable}{>{$}l<{$} p{0.72\textwidth}}
+\caption{Principal symbols.}\label{tab:symbols}\\
+\toprule
+\text{Symbol} & Meaning \\
+\midrule
+\endfirsthead
+\toprule
+\text{Symbol} & Meaning \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+K & capital stock (\$) \\
+A, L & total factor productivity; population (persons) \\
+\yg, \yd, \yn & per-capita gross output, output after climate damage, and
+  output after damage and abatement cost (\$ person$^{-1}$ yr$^{-1}$) \\
+\ya & per-capita abatement expenditure \\
+\Omb & aggregate damage fraction implied by the current warming \\
+\Omega, \omega_i & aggregate and per-node damage fractions \\
+q_i, Q & per-node and aggregate damage ratios carried to the next step \\
+f, P & control $f = \log_{10} P$; carbon price $P$ (\$ tCO$_2^{-1}$), equal
+  to the marginal abatement cost \\
+s & savings rate (control) \\
+\mu & abatement fraction \\
+\sigma, \xi, \Eland & CO$_2$ intensity of output; ratio of CO$_2$-equivalent
+  to industrial CO$_2$ emissions; land-use emissions \\
+\theta_1, \theta_2 & backstop price (\$ tCO$_2^{-1}$); abatement cost exponent \\
+\Ecum, H_k & cumulative emissions; temperature contributions of the three
+  impulse-response modes \\
+\Delta T & warming above preindustrial \\
+G & Gini coefficient of pre-damage income \\
+\Lor, \Lor_b & Lorenz curve; base (empirical) Lorenz curve \\
+F_i, w_i & quadrature nodes and weights in population rank, $i = 1,\dots,\Nq$ \\
+\eta, \rho & elasticity of marginal utility; pure rate of time preference \\
+\tau, \etat & tax progressivity parameter; exponent of the tax schedule \\
+\beta & damage vulnerability exponent \\
+\Delta U & utility loss parameter of the tax schedule \\
+U & population-weighted mean utility, $U = L\,\bar u$ \\
+\varepsilon & numerical safeguard constant, $10^{-12}$ \\
+\end{longtable}
+
+%======================================================================
+\section{Exogenous inputs}
+\label{sec:inputs}
+%======================================================================
+
+\subsection{Scalar parameters}
+
+Each run is specified by a configuration that fixes all parameters; there are
+no implicit defaults. Table~\ref{tab:scalars} lists the scalar parameters.
+Only $\eta$, $\rho$, $\tau$ and $\beta$ vary between the manuscript runs
+(Section~\ref{sec:design}).
+
+\begin{table}[ht]
+\centering
+\caption{Scalar parameters of the manuscript runs.}
+\label{tab:scalars}
+\small
+\begin{tabular}{l l l}
+\toprule
+Symbol & Value & Meaning \\
+\midrule
+$\alpha$ & 0.3 & capital share of output \\
+$\delta$ & 0.1 yr$^{-1}$ & capital depreciation rate \\
+$\psi_1$ & 0 $^\circ$C$^{-1}$ & linear damage coefficient \\
+$\psi_2$ & 0.003467 $^\circ$C$^{-2}$ & quadratic damage coefficient \\
+$\Omega_{\max}$ & 0.8 & upper bound on the damage fraction \\
+$\eta$ & 1.5 (varied) & elasticity of marginal utility \\
+$\rho$ & 0.025 yr$^{-1}$ (varied) & pure rate of time preference \\
+$\theta_2$ & 2.6 & abatement cost exponent \\
+$\mu_{\max}$ & $10^{20}$ & upper bound on $\mu$ (effectively none) \\
+$K_0$ & $2.95\times10^{14}$ \$ & capital in 2020 \\
+$\yref$ & 17\,210.79 \$ person$^{-1}$ yr$^{-1}$ & reference income of the
+  damage distribution \\
+$\beta$ & 0, 0.5, 1 (varied) & damage vulnerability exponent \\
+$\tau$ & 0, 0.5, 0.998 (varied) & tax progressivity, $0\le\tau<1$ \\
+$\Nq$ & 32 & number of quadrature nodes \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+$\mu > 1$ is allowed and represents net-negative industrial emissions. The
+model also supports emission and consumption pulses at a given year
+(Section~\ref{sec:pulses}); their amplitudes are zero in all manuscript runs.
+
+\subsection{Time functions}
+
+Exogenous time-dependent inputs are given by one of the following functional
+forms, evaluated at $t_r = t-\tb$:
+\begin{align}
+  &\text{exponential:} && g(t_r) = a\,e^{b t_r} + c, \label{eq:tf-exp}\\
+  &\text{double exponential:} && g(t_r) = g_0\left[\phi\, e^{b_1 t_r}
+     + (1-\phi)\,e^{b_2 t_r}\right], \label{eq:tf-dexp}\\
+  &\text{Gompertz:} && g(t_r) = g_\infty \exp\!\left[\ln\!\left(\frac{g_0}{g_\infty}\right)
+     e^{c\, t_r}\right], \label{eq:tf-gompertz}\\
+  &\text{logistic:} && g(t_r) = \frac{g_\infty}{1 + \left(g_\infty/g_0 - 1\right)e^{-b t_r}}, \\
+  &\text{piecewise linear:} && \text{linear interpolation between given points,
+     constant beyond the end points,}
+\end{align}
+or a constant. The Gompertz form has $g(0) = g_0$ and $g\to g_\infty$ for
+$c<0$. Table~\ref{tab:timefunctions} gives the time functions of the
+manuscript runs; Section~\ref{sec:estimation} gives their provenance.
+
+\begin{table}[ht]
+\centering
+\caption{Exogenous time functions of the manuscript runs ($t_r = t - 2020$).}
+\label{tab:timefunctions}
+\small
+\begin{tabular}{l l p{0.5\textwidth}}
+\toprule
+Input & Form & Parameters \\
+\midrule
+$A(t)$ & Gompertz & $g_0 = 739.619$, $g_\infty = 4\,906\,815.811$,
+  $c = -0.0015$ yr$^{-1}$ \\
+$L(t)$ (persons) & Gompertz & $g_0 = 7.752\times10^9$,
+  $g_\infty = 1.0825\times10^{10}$, $c = -0.03133$ yr$^{-1}$ \\
+$\sigma(t)$ (tCO$_2$ \$$^{-1}$) & Gompertz & $g_0 = 2.91355\times10^{-4}$,
+  $g_\infty = 4.4681\times10^{-5}$, $c = -0.008164$ yr$^{-1}$ \\
+$\theta_1(t)$ (\$ tCO$_2^{-1}$) & double exponential & $g_0 = 6035.6$,
+  $\phi = 0.906$, $b_1 = -0.224$, $b_2 = -0.00112$ yr$^{-1}$ \\
+$G(t)$ & exponential & $a = 0.19517$, $b = -0.01058$ yr$^{-1}$,
+  $c = 0.37796$ \\
+$\xi(t)$ & exponential & $a = 1.4$, $b = -0.002085$ yr$^{-1}$, $c = 0$ \\
+$\Eland(t)$ (tCO$_2$ yr$^{-1}$) & exponential & $a = 5.9\times10^9$,
+  $b = -0.02107$ yr$^{-1}$, $c = 0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Gini trajectory gives $G(2020) = 0.57313$ and $G(\infty) = 0.37796$. In
+the runs that compare the model with DICE-2023 (Section~\ref{sec:design}),
+$G(t)\equiv 0$.
+
+\subsection{Climate response and initial state}
+\label{sec:climate-constants}
+
+Warming responds to cumulative CO$_2$ emissions through the impulse response
+of the median model of Ricke and Caldeira~\cite{RickeCaldeira2014}. The warming
+at time $t$ caused by a unit emission at time $t'$ is
+\begin{equation}
+  R(t - t') = R_\infty + \sum_{k=1}^{3} a_k\, e^{-(t-t')/\zeta_k},
+  \qquad R_\infty = -(a_1+a_2+a_3),
+  \label{eq:impulse}
+\end{equation}
+with $a = (-0.629,\ 0.203,\ -0.0521)\times10^{-12}$ $^\circ$C~tCO$_2^{-1}$
+and $\zeta = (2.241,\ 35.750,\ 97.180)$~yr, so that $R_\infty =
+4.781\times10^{-13}$ $^\circ$C~tCO$_2^{-1}$ and $R(0) = 0$.
+
+The 2020 climate state comes from a fit of historical warming,
+\begin{equation}
+  \Delta T_{\mathrm{hist}}(t) = 1.1126 - 0.07022\,e^{(2020-t)/\zeta_1}
+  + 0.21036\,e^{(2020-t)/\zeta_2} - 0.08308\,e^{(2020-t)/\zeta_3}
+  \quad (^\circ\mathrm{C}),
+\end{equation}
+obtained by convolving an exponential emission history (633.5~GtC cumulative
+to 2020, as in DICE-2023) with Eq.~\eqref{eq:impulse}. Its constant term is
+$R_\infty\Ecum(2020)$, which gives $\Ecum(2020) = 1.1126/R_\infty =
+2.327128\times10^{12}$~tCO$_2$. The other three terms are the 2020 mode
+temperatures, $H_1 = -0.07022$, $H_2 = 0.21036$ and $H_3 = -0.08308$~$^\circ$C.
+The initial warming is $\Delta T(2020) = 1.16966$~$^\circ$C.
+
+%======================================================================
+\section{Income distribution}
+\label{sec:distribution}
+%======================================================================
+
+\subsection{Quadrature over population rank}
+
+Population averages are computed with $\Nq$-point Gauss--Legendre quadrature
+mapped to $[0,1]$. If $x_i$ and $W_i$ are the Gauss--Legendre nodes and
+weights on $[-1,1]$, the rank nodes and population weights are
+\begin{equation}
+  F_i = \tfrac{1}{2}(x_i + 1), \qquad w_i = \tfrac{1}{2} W_i,
+  \qquad \sum_{i=1}^{\Nq} w_i = 1,
+\end{equation}
+and the population mean of a quantity $z$ is $\langle z\rangle =
+\sum_i w_i z_i$. Node $i$ represents the population interval
+$[F_{i-}, F_{i+}]$ with $F_{1-}=0$ and $F_{i+} - F_{i-} = w_i$; by the
+Chebyshev--Markov--Stieltjes separation theorem each node lies strictly inside
+its interval, so node values also serve as piecewise-constant values on the
+intervals. For $\Nq = 32$, $F_1 = 0.001368$, $F_{32} = 0.998632$ and
+$w_1 = 0.003509$.
+
+\subsection{Empirical Lorenz curve}
+\label{sec:lorenz}
+
+All manuscript runs use a Lorenz curve fitted to the global income
+distribution (Section~\ref{sec:lorenz-fit}). The base curve and its derivative
+are
+\begin{equation}
+  \Lor_b(F) = \sum_{k=0}^{3} \gamma_k F^{p_k}, \qquad
+  \Lor_b'(F) = \sum_{k=0}^{3} \gamma_k\, p_k\, F^{p_k - 1},
+  \label{eq:lorenz-base}
+\end{equation}
+with exponents and weights
+\begin{gather*}
+  p = (1.500036,\ 4.367440,\ 14.072005,\ 135.059674),\\
+  \gamma_1 = 0.3776187268483524,\quad \gamma_2 = 0.3671247620949191,\\
+  \gamma_3 = 0.09538538350961864,\quad \gamma_0 = 1-\gamma_1-\gamma_2-\gamma_3 .
+\end{gather*}
+Its Gini coefficient is
+\begin{equation}
+  G_b = 1 - 2\sum_{k=0}^{3}\frac{\gamma_k}{p_k+1} = 0.681279513926459.
+\end{equation}
+A Lorenz curve with any Gini coefficient $0\le G\le G_b$ is obtained by mixing
+the base curve linearly with perfect equality:
+\begin{equation}
+  \Lor(F) = (1-a)\,F + a\,\Lor_b(F), \qquad
+  \Lor'(F) = (1-a) + a\,\Lor_b'(F), \qquad a = G/G_b,
+  \label{eq:lorenz-mix}
+\end{equation}
+which has Gini coefficient exactly $G$. A Gini coefficient above $G_b$ is
+treated as a configuration error. For $G = 0$, $\Lor'(F) \equiv 1$.
+
+The density $\Lor_b'$ is steep at the top of the distribution ($p_3 = 135$),
+so the quadrature does not integrate it exactly: the computed mean
+$\sum_i w_i \Lor'(F_i) - 1$ is $3.2\times10^{-7}$ at $G = 0.3$,
+$6.05\times10^{-7}$ at $G = 0.573$ and $7.2\times10^{-7}$ at $G = G_b$. The
+model does not renormalize; this error is part of the published results.
+
+The model also supports a Pareto Lorenz curve, $\Lor'(F) = (1 - 1/a)(1-F)^{-1/a}$
+with $a = (1 + 1/G)/2$. It is not used for any result: its density is singular
+at $F\to1$, and with 32 nodes the quadrature loses 2--10\% of income.
+
+%======================================================================
+\section{Climate and economy in one time step}
+\label{sec:step}
+%======================================================================
+
+At each time $t$ the model computes the tendencies of the state variables
+$(K, \Ecum, H_1, H_2, H_3)$ from the state, the exogenous inputs, the controls
+$f(t)$ and $s(t)$, and two damage-distribution ratios carried from the
+previous step: the per-node ratios $q_i$ and the aggregate ratio $Q$. The
+calculation proceeds in the order of the following subsections.
+
+\subsection{Temperature}
+
+\begin{equation}
+  \Delta T = R_\infty \Ecum + H_1 + H_2 + H_3 .
+\end{equation}
+
+\subsection{Climate damage with a lagged distribution}
+\label{sec:damage}
+
+The aggregate damage fraction implied by the current warming is
+\begin{equation}
+  \Omb = \min\left\{\Omega_{\max},\ \psi_1\Delta T + \psi_2 \Delta T^2\right\}.
+  \label{eq:damage-base}
+\end{equation}
+The damage applied in this step uses the current $\Omb$ but the distribution
+of damage across incomes computed at the end of the previous step
+(Section~\ref{sec:damage-update}):
+\begin{equation}
+  \tilde\Omega = \clip(Q\,\Omb;\ 0,\ 1-\varepsilon), \qquad
+  \tilde\omega_i = \clip(q_i\,\Omb;\ 0,\ 1-\varepsilon).
+  \label{eq:damage-lagged}
+\end{equation}
+In the first step $q_i = Q = 1$, i.e.\ damage is uniform across incomes.
+
+\subsection{Production}
+
+\begin{equation}
+  \yg = A\left(\frac{K}{L}\right)^{\alpha}, \qquad
+  \yd = (1-\tilde\Omega)\,\yg ,
+\end{equation}
+with $\yg = 0$ if $K\le0$. Climate damage per capita is $\tilde\Omega\,\yg$.
+If $\yg\le\varepsilon$ or $\yd\le\varepsilon$ the economy has collapsed and
+the step is handled as described in Section~\ref{sec:collapse}.
+
+\subsection{Abatement}
+\label{sec:abatement}
+
+The control sets the carbon price, $P = 10^{f}$, which equals the marginal
+abatement cost. Potential (unabated) emissions per capita, including land-use
+emissions, are
+\begin{equation}
+  \epot = \sigma\,\yg\,\xi + \Eland/L .
+\end{equation}
+Abatement follows the DICE cost curve, whose marginal cost
+$\theta_1\mu^{\theta_2-1}$ is set equal to $P$:
+\begin{equation}
+  \mu = \min\left\{\mu_{\max},\ \left(\frac{P}{\theta_1}\right)^{1/(\theta_2-1)}\right\},
+  \qquad
+  \ya = \min\left\{\frac{\theta_1}{\theta_2}\,\epot\,\mu^{\theta_2},\
+  (1-\varepsilon)\,\yd\right\},
+  \label{eq:abatement}
+\end{equation}
+if $\epot > \varepsilon$ and $P > \varepsilon$; otherwise $\mu = \ya = 0$.
+Abatement expenditure is paid from damaged output:
+\begin{equation}
+  \lambda = \ya/\yd, \qquad \yn = (1-\lambda)\,\yd .
+\end{equation}
+Land-use emissions are abated at the same fraction $\mu$ as industrial
+emissions.
+
+\subsection{Emission and consumption pulses}
+\label{sec:pulses}
+
+For impulse experiments, an emission pulse $X_E$ (tCO$_2$) or a consumption
+pulse $X_C$ (\$) can be added in the step $[t, t+\Delta t)$ that contains a
+given year. They contribute $E_{\mathrm{extra}} = X_E/\Delta t$ to the
+emission rate and $c_{\mathrm{extra}} = X_C/(L\Delta t)$ to per-capita income
+in that step, and zero otherwise. Both are zero in all manuscript runs.
+
+\subsection{Pre-tax income distribution}
+
+Pre-tax income at node $i$ is gross income at that rank, reduced by the
+node's lagged damage fraction:
+\begin{equation}
+  y_{\mathrm{pre},i} = \yg\,\Lor'(F_i)\,(1-\tilde\omega_i),
+  \qquad \hat y_i = y_{\mathrm{pre},i}/\yd ,
+  \label{eq:pretax}
+\end{equation}
+where $\Lor'$ uses the current $G(t)$, and $\hat y_i$ is pre-tax income
+normalized by mean damaged output. The mean $\langle \hat y\rangle$ equals one
+only approximately, because of the quadrature error of
+Section~\ref{sec:lorenz} and because the lagged node damages $\tilde\omega_i$
+were normalized with the previous step's post-tax incomes
+(Section~\ref{sec:damage-update}), whereas $\tilde\Omega$ is applied in
+aggregate. The model uses these quantities as they are.
+
+\subsection{Progressive taxation}
+\label{sec:tax}
+
+The abatement expenditure is financed by a tax on post-damage income. The per
+capita revenue required is $T = \ya - c_{\mathrm{extra}}$ (so a consumption
+pulse reduces the tax), or $\hat T = T/\yd$ in normalized units.
+
+\paragraph{Tax schedule.} The tax belongs to the family of equal-utility-loss
+schedules: every person loses the same amount $\Delta U \ge 0$ of utility
+measured with an isoelastic function of elasticity $\etat$,
+$u_\tau(c) = c^{1-\etat}/(1-\etat)$ (or $\ln c$ for $\etat = 1$). The
+progressivity parameter $\tau\in[0,1)$ sets
+\begin{equation}
+  \etat = 1 + \frac{\tau}{1-\tau}\,(\eta - 1).
+  \label{eq:eta-tau}
+\end{equation}
+$\tau = 0$ gives $\etat = 1$, a flat tax rate; $\tau = 0.5$ gives
+$\etat = \eta$, equal utility loss under the welfare function; and
+$\tau\to1$ gives $\etat\to\infty$, a tax that falls on the highest incomes.
+For $\eta = 1.5$ and $\tau = 0.998$, $\etat = 250.5$.
+
+Post-tax normalized income $c(\hat y;\Delta U)$ solves
+$u_\tau(\hat y) - u_\tau(c) = \Delta U$:
+\begin{equation}
+  c(\hat y;\Delta U) =
+  \begin{cases}
+    \hat y\,e^{-\Delta U}, & \etat = 1,\\[4pt]
+    \left[\hat y^{\,1-\etat} + (\etat-1)\,\Delta U\right]^{-1/(\etat-1)}, & \etat > 1,\\[4pt]
+    \left[\max\left\{\hat y^{\,1-\etat} - (1-\etat)\,\Delta U,\ 0\right\}\right]^{1/(1-\etat)}, & \etat < 1.
+  \end{cases}
+  \label{eq:schedule}
+\end{equation}
+The case $\etat = 1$ is applied when $|\etat - 1| < \varepsilon$. For
+$\etat>1$ the schedule is evaluated in logarithms,
+\begin{equation}
+  \ln c = \ln\hat y - \frac{1}{\etat-1}\,
+  \ln\!\left[1 + \exp\!\left(\ln(\etat-1) + \ln\Delta U + (\etat-1)\ln\hat y\right)\right],
+\end{equation}
+with $\ln\Delta U$ as the unknown. For strongly progressive taxes $\Delta U$
+is extremely small (for $\tau = 0.998$, $\ln\Delta U$ lies between about
+$-670$ and $-460$), and working with $\ln\Delta U$ avoids an underflow that
+would otherwise switch the tax off.
+
+\paragraph{Revenue condition.} If $T \le \varepsilon$ there is no tax. For a
+flat tax ($|\etat - 1|<\varepsilon$), every income is reduced by the fraction
+$r = \min\{\hat T, 1-\varepsilon\}$, i.e.\ $\Delta U = -\ln(1-r)$. This closed
+form assumes $\langle\hat y\rangle = 1$, so the revenue raised differs from
+$\hat T$ by the small relative error discussed above. Otherwise
+$x = \ln\Delta U$ is the root of the revenue residual
+\begin{equation}
+  g(x) = \sum_{i} w_i\left[\hat y_i - c\left(\hat y_i; e^{x}\right)\right] - \hat T ,
+  \label{eq:revenue}
+\end{equation}
+found with Brent's method~\cite{Brent1973} on the bracket
+\begin{equation}
+  x_{\mathrm{lo}} = -\left|(\etat-1)\ln\max_i \hat y_i\right| - 50,
+  \qquad x_{\mathrm{hi}} = \ln 10^{10},
+\end{equation}
+with an absolute tolerance of $10^{-9}$ in $x$, a relative tolerance of
+$4\cdot2^{-52}$ and at most 100 iterations. If $g(x_{\mathrm{lo}})\ge0$, the
+target is negligible and no tax is levied. If $g(x_{\mathrm{hi}})<0$, the
+revenue cannot be raised and the control trajectory is infeasible
+(Section~\ref{sec:nlopt}). A solution whose post-tax incomes are not finite,
+or decrease with rank by more than $10^{-9}$, is also treated as a failure.
+
+Post-tax income is $y_{\mathrm{n},i} = c(\hat y_i;\Delta U)\,\yd$.
+
+\paragraph{Tax-rate diagnostics.} The average and marginal tax rates at node
+$i$ are reported but do not affect the dynamics:
+\begin{equation}
+  t^{\mathrm{avg}}_i = 1 - \frac{y_{\mathrm{n},i}}{y_{\mathrm{pre},i}}, \qquad
+  t^{\mathrm{marg}}_i = 1 - \frac{\partial c}{\partial\hat y}
+  = 1 - \left(\frac{y_{\mathrm{n},i}}{y_{\mathrm{pre},i}}\right)^{\etat},
+\end{equation}
+with the ratio $y_{\mathrm{n},i}/y_{\mathrm{pre},i}$ set to one where
+$y_{\mathrm{pre},i}\le\varepsilon$, and the marginal rate set to one where that
+ratio is at most $\varepsilon$.
+
+\subsection{Utility}
+
+Every person saves the same fraction $s$ of post-tax income. Consumption and
+utility at node $i$ are
+\begin{equation}
+  c_i = (1-s)\,y_{\mathrm{n},i}, \qquad
+  u_i = \begin{cases}
+    \dfrac{\max\{c_i,\varepsilon\}^{1-\eta}}{1-\eta}, & \eta\ne1,\\[8pt]
+    \ln\max\{c_i,\varepsilon\}, & \eta = 1,
+  \end{cases}
+\end{equation}
+and the population-weighted mean utility is
+\begin{equation}
+  U = L\,\bar u, \qquad \bar u = \sum_i w_i u_i .
+\end{equation}
+
+\subsection{Damage distribution for the next step}
+\label{sec:damage-update}
+
+Damage fractions are distributed across incomes by a power law in post-tax
+income,
+\begin{equation}
+  \omega_i^{*} = \clip\!\left(\Omb\left(\frac{y_{\mathrm{n},i}}{\yref}\right)^{-\beta};\
+  0,\ 1-\varepsilon\right),
+  \label{eq:damage-powerlaw}
+\end{equation}
+with $\omega_i^{*} = \Omb$ for $\beta = 0$ (applied when $|\beta|<\varepsilon$)
+and $\omega_i^{*} = 1-\varepsilon$ where $y_{\mathrm{n},i}\le\varepsilon$. The
+fractions are then rescaled so that the income-weighted mean damage fraction
+equals $\Omb$:
+\begin{equation}
+  \omega_i = \clip\!\left(\omega_i^{*}\,
+  \frac{\Omb\sum_j w_j y_{\mathrm{n},j}}{\sum_j w_j\,y_{\mathrm{n},j}\,\omega_j^{*}};\
+  0,\ 1-\varepsilon\right),
+  \qquad
+  \Omega = \frac{\sum_i w_i\,y_{\mathrm{n},i}\,\omega_i}{\sum_i w_i\,y_{\mathrm{n},i}} .
+  \label{eq:damage-rescale}
+\end{equation}
+Thus $\beta$ redistributes damage across incomes without changing its
+aggregate, and $\yref$ cancels except through the clipping bounds. For
+$\beta = 1$, absolute damage $\omega_i\,y_{\mathrm{n},i}$ is the same for every
+person; for $\beta > 0$, damage falls disproportionately on lower incomes.
+(The rescaling is skipped in an optional variant, not used for any result, in
+which the aggregate damage depends on the income distribution.)
+
+The ratios carried to the next step are
+\begin{equation}
+  q_i = \omega_i/\Omb, \qquad Q = \Omega/\Omb,
+\end{equation}
+or zero if $\Omb\le\varepsilon$. The next step multiplies them by its own
+$\Omb$ (Eq.~\ref{eq:damage-lagged}): the temperature dependence of damage is
+current, while its distribution across incomes lags by one time step.
+
+\subsection{Emissions, capital and climate tendencies}
+
+Net emissions per capita and the tendencies of the state are
+\begin{align}
+  e &= (1-\mu)\,\epot , \\
+  \frac{\dd K}{\dd t} &= s\,\yn L - \delta K , \label{eq:capital}\\
+  \frac{\dd\Ecum}{\dd t} &= e\,L + E_{\mathrm{extra}} , \\
+  \frac{\dd H_k}{\dd t} &= a_k\,\frac{\dd\Ecum}{\dd t} - \frac{H_k}{\zeta_k},
+  \qquad k = 1,2,3 . \label{eq:modes}
+\end{align}
+Investment uses aggregate net output $\yn$, not the mean of the node incomes.
+Eqs.~\eqref{eq:modes} are the state-space form of the impulse response
+Eq.~\eqref{eq:impulse}: together with $\Delta T = R_\infty\Ecum + \sum_k H_k$
+they reproduce the warming of an arbitrary emission history. Emissions are
+negative when $\mu > 1$.
+
+\subsection{Economic collapse}
+\label{sec:collapse}
+
+If $\yg\le\varepsilon$ or $\yd\le\varepsilon$, the step is treated as an
+economic collapse: abatement, taxes, emissions and all per-node incomes and
+damages are set to zero, $\dd K/\dd t = -\delta K$, and the mean utility is
+assigned the sentinel value $\bar u = U = -10^{30}$ (not multiplied by $L$).
+The climate tendencies and the carried ratios are then computed as above.
+This branch is not reached in any of the reference runs.
+
+%======================================================================
+\section{Time integration}
+\label{sec:integration}
+%======================================================================
+
+The model is integrated on the grid $t_n = t_0 + n\,\Delta t$,
+$n = 0,\dots,N-1$, which for 2020--2420 with $\Delta t = 1$~yr has $N = 401$
+points. The initial state is $K = K_0$ and the 2020 climate state of
+Section~\ref{sec:climate-constants}, with $q_i = Q = 1$. At each grid point
+the tendencies are evaluated from the state at $t_n$, all diagnostics are
+recorded, and the state is advanced with the forward Euler method:
+\begin{equation}
+  K_{n+1} = K_n + \Delta t\,\dot K_n, \quad
+  E_{\mathrm{cum},n+1} = \max\{0,\ E_{\mathrm{cum},n} + \Delta t\,\dot E_{\mathrm{cum},n}\}, \quad
+  H_{k,n+1} = H_{k,n} + \Delta t\,\dot H_{k,n}.
+\end{equation}
+The recorded state at $t_n$ is the state before that step's update; the update
+computed at the final grid point is not used. Cumulative emissions are kept
+non-negative, so net-negative emissions cannot cool the climate below that of
+zero cumulative emissions. No other state is constrained.
+
+%======================================================================
+\section{Derived quantities}
+\label{sec:derived}
+%======================================================================
+
+\paragraph{Aggregates.} Totals are per-capita values times population:
+$Y_{\mathrm{g}} = \yg L$, $Y_{\mathrm{d}} = \yd L$, $Y_{\mathrm{n}} = \yn L$,
+$E = eL$. Mean consumption and savings per capita are $(1-s)\yn$ and $s\yn$.
+
+\paragraph{Carbon price.} The reported marginal abatement cost is
+$\theta_1\mu^{\theta_2-1}$, which equals $P = 10^f$ except where $\mu$ was
+capped or set to zero. In the figures, the optimal carbon price in a year is
+this value at that grid point (the grid is annual, so no interpolation is
+needed).
+
+\paragraph{Consumption discount rate.} The model reports the consumption
+discount rate given by the marginal-utility-weighted Ramsey rule. With
+$c_{j,n} = \max\{(1-s_n)\,y_{\mathrm{n},j}(t_n),\ \varepsilon\}$ and
+$M_n = \sum_j w_j\,c_{j,n}^{-\eta}$,
+\begin{equation}
+  r_n = e^{\rho\Delta t}\,\frac{M_n}{M_{n+1}} - 1,
+  \qquad r_{N-1} = r_{N-2}.
+  \label{eq:ramsey}
+\end{equation}
+This is the discrete form of $r = \rho - \frac{\dd}{\dd t}\ln\sum_j w_j\,
+u'(c_j)$, i.e.\ $\rho$ plus $\eta$ times the growth rate of consumption
+averaged with weights proportional to marginal utility. For a static
+distribution it reduces to the representative-agent rule $\rho + \eta g$.
+% AUTHOR NOTE: the r_consumption columns in the published results CSVs were
+% computed with the earlier representative-agent rule,
+% r = exp(rho) * (cbar_{n+1}/cbar_n)^eta - 1, with cbar the mean consumption;
+% Eq. (ramsey) differs from them by 1-2% typically and up to ~50% at single
+% points. No figure uses this column (Figs 5 and S3 use r_mu; see the r_mu subsection).
+
+%======================================================================
+\section{Objective}
+\label{sec:objective}
+%======================================================================
+
+The objective is the discounted integral of population-weighted mean utility,
+\begin{equation}
+  J = \int_{t_0}^{t_{\mathrm{end}}} e^{-\rho(t-t_0)}\,U(t)\,\dd t
+    \approx \sum_{n=0}^{N-2}\frac{\Delta t}{2}
+    \left[e^{-\rho(t_n-t_0)}U_n + e^{-\rho(t_{n+1}-t_0)}U_{n+1}\right],
+  \label{eq:objective}
+\end{equation}
+evaluated with the trapezoidal rule on the integration grid. For the
+manuscript configuration $J\approx -6.5\times10^{9}$.
+
+%======================================================================
+\section{Control trajectories}
+\label{sec:controls}
+%======================================================================
+
+Each control, $f(t)$ and $s(t)$, is represented by its values at $n$ control
+times and interpolated between them.
+
+\subsection{Control times}
+\label{sec:control-times}
+
+Control times are concentrated early in the century, where the optimal
+controls change fastest. In relative time, with $t_0 = 0$ and
+$t_{\mathrm{end}} = 400$:
+\begin{enumerate}
+  \item One wind-down point is used if $n\le10$ and two otherwise
+  ($n_{\mathrm{end}}$). The wind-down period begins at
+  $t_{\mathrm{join}} = t_{\mathrm{end}} - 4/\delta$ (360, i.e.\ 2380, for
+  $\delta = 0.1$~yr$^{-1}$), four e-folding times of capital depreciation
+  before the end of the run.
+  \item The remaining $n_1 = n - n_{\mathrm{end}}\ge3$ points span
+  $[t_0, t_{\mathrm{join}}]$ with $m = n_1 - 1$ geometrically growing
+  intervals. The first interval is $\Delta t$, and the growth factor
+  $1 + r_0$ solves
+  \begin{equation}
+    \sum_{i=0}^{m-1}\Delta t\,(1+r_0)^i = t_{\mathrm{join}} - t_0 ,
+  \end{equation}
+  found with Brent's method on $r_0\in(-0.5, 100)$. If the bracket contains no
+  root, $r_0 = (t_{\mathrm{join}}-t_0)/(m\Delta t) - 1$ is used instead.
+  \item The points are $\tc_0 = t_0$ and $\tc_{i+1} = \tc_i + \Delta t
+  (1+r_0)^i$, accumulated sequentially, with the last point then set exactly to
+  $t_{\mathrm{join}}$.
+  \item The wind-down points are $t_{\mathrm{end}}$ if $n_{\mathrm{end}}=1$, or
+  $t_{\mathrm{end}} - 1/\delta$ and $t_{\mathrm{end}}$ if $n_{\mathrm{end}}=2$.
+\end{enumerate}
+Table~\ref{tab:control-times} lists the resulting grids. For $n=4$, the
+fallback $r_0$ is used; it does not matter, because the second point is
+$t_0 + \Delta t$ for any $r_0$ and the third is set to $t_{\mathrm{join}}$.
+
+\begin{table}[ht]
+\centering
+\caption{Control times (calendar years) of the five refinement iterations.}
+\label{tab:control-times}
+\small
+\begin{tabular}{r l p{0.62\textwidth}}
+\toprule
+$n$ & $r_0$ & Control times \\
+\midrule
+4 & 179 (fallback) & 2020, 2021, 2380, 2420 \\
+6 & 5.744311 & 2020, 2021, 2027.744, 2073.230, 2380, 2420 \\
+9 & 1.443996 & 2020, 2021, 2023.444, 2029.417, 2044.015, 2079.693,
+  2166.891, 2380, 2420 \\
+15 & 0.555777 & 2020, 2021, 2022.556, 2024.976, 2028.742, 2034.600, 2043.715,
+  2057.895, 2079.957, 2114.279, 2167.677, 2250.753, 2380, 2410, 2420 \\
+24 & 0.236343 & 2020, 2021, 2022.236, 2023.765, 2025.655, 2027.991, 2030.880,
+  2034.451, 2038.867, 2044.326, 2051.075, 2059.419, 2069.736, 2082.490,
+  2098.259, 2117.755, 2141.859, 2171.660, 2208.504, 2254.055, 2310.372, 2380,
+  2410, 2420 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Interpolation}
+\label{sec:pchip}
+
+Between control times, each control follows the shape-preserving piecewise
+cubic Hermite interpolant (PCHIP) of Fritsch and
+Butland~\cite{FritschCarlson1980,FritschButland1984}, as implemented in
+SciPy~1.15. For control points $(\tc_k, v_k)$ with $h_k = \tc_{k+1}-\tc_k$
+and secant slopes $m_k = (v_{k+1}-v_k)/h_k$, the derivative at an interior
+point is zero if $m_{k-1}$ and $m_k$ differ in sign or either is zero, and
+otherwise the weighted harmonic mean
+\begin{equation}
+  d_k = \frac{w_1 + w_2}{w_1/m_{k-1} + w_2/m_k}, \qquad
+  w_1 = 2h_k + h_{k-1},\quad w_2 = h_k + 2h_{k-1}.
+\end{equation}
+At the first point,
+\begin{equation}
+  d_0 = \frac{(2h_0 + h_1)\,m_0 - h_0\,m_1}{h_0 + h_1},
+\end{equation}
+set to zero if its sign differs from that of $m_0$, and to $3m_0$ if $m_0$
+and $m_1$ differ in sign and $|d_0| > 3|m_0|$; the last point is treated
+symmetrically, and with only two points both derivatives equal the secant
+slope. On $[\tc_k,\tc_{k+1}]$ the interpolant is the cubic Hermite
+polynomial with values $v_k, v_{k+1}$ and derivatives $d_k, d_{k+1}$. Beyond
+the last control time the control is held at its last value. No bounds are
+imposed on the interpolated trajectory; the bounds of
+Section~\ref{sec:optimization} apply only to the values at the control times.
+
+%======================================================================
+\section{Optimization}
+\label{sec:optimization}
+%======================================================================
+
+\subsection{Refinement schedule}
+
+The optimization proceeds through $K_{\mathrm{it}} = 5$ iterations with
+progressively finer control grids and larger evaluation budgets. For an
+initial value $a$ and a final value $b$, iteration $k = 1,\dots,K_{\mathrm{it}}$
+uses
+\begin{equation}
+  \operatorname{round}\!\left(1 + (a-1)\,\left[\frac{b-1}{a-1}\right]^{(k-1)/(K_{\mathrm{it}}-1)}\right),
+\end{equation}
+with ties rounded to even. With $a = 4$ and $b = 24$ control points, the
+iterations use 4, 6, 9, 15 and 24 points for each control; with budgets from
+2\,000 to 100\,000 objective evaluations, they allow 2\,000, 5\,317, 14\,140,
+37\,602 and 100\,000 evaluations.
+
+\subsection{Iterations}
+
+In the first iteration, every control value is set to its initial guess
+($f = 2.5$, i.e.\ \$316~tCO$_2^{-1}$; $s = 0.256$), except at the final control
+time, 2420, where both are set to zero. In each later iteration, the previous
+optimum is interpolated (Section~\ref{sec:pchip}) onto the new control times.
+The optimization variables are the values of $f$ and then of $s$ at their
+control times, with bounds $f\in[-1, 4]$ (a carbon price between \$0.10 and
+\$10\,000~tCO$_2^{-1}$) and $s\in[0, 1]$; the starting point is clipped to the
+bounds.
+
+Each iteration maximizes $J$ with the Subplex algorithm~\cite{Rowan1990} as
+implemented in the NLopt library~\cite{NLopt} (algorithm \texttt{LN\_SBPLX}).
+The only stopping
+criteria are an absolute tolerance of $10^{-8}$ on every variable and the
+iteration's evaluation budget; relative and absolute tolerances on the
+objective are disabled, and all other settings, including the initial step
+size, are NLopt's defaults. The result of the final iteration is the reported
+optimum. In the nine reference runs the final iteration always terminated on
+the variable tolerance.
+
+\subsection{Objective presented to the optimizer}
+\label{sec:nlopt}
+
+The optimizer maximizes $10^{-13}J$. If the model cannot be evaluated for a
+trial trajectory---because the required tax revenue cannot be raised, the
+Gini coefficient exceeds $G_b$, or the tax root solve fails---$J$ is set to
+$-10^{30}$, which the optimizer sees as $-10^{17}$. If $J$ is not finite, the
+optimizer receives $-10^{30}$ directly.
+
+%======================================================================
+\section{Simulation experiments}
+\label{sec:design}
+%======================================================================
+
+All 14\,801 manuscript runs share the template of
+Section~\ref{sec:inputs} and differ only in $\eta$, $\rho$, $\tau$ and $\beta$,
+with the exceptions noted. Unless stated otherwise, $\eta = 1.5$ and
+$\rho = 0.025$~yr$^{-1}$, and the three tax cases are
+$\tau\in\{0, 0.5, 0.998\}$. Table~\ref{tab:design} summarizes the families of
+runs. The configuration file of every run is archived with the code, so every
+simulation behind the manuscript can be re-run.
+
+\begin{longtable}{p{0.19\textwidth} r p{0.55\textwidth}}
+\caption{Families of simulation runs.}\label{tab:design}\\
+\toprule
+Family & Runs & Design \\
+\midrule
+\endfirsthead
+\toprule
+Family & Runs & Design \\
+\midrule
+\endhead
+\bottomrule
+\endfoot
+Reference cases & 9 &
+  $\tau\in\{0, 0.5, 0.998\}\times\beta\in\{0, 0.5, 1\}$. \\
+Contour grid & 1\,681 &
+  $\tau\in\{k/40: k = 0,\dots,39\}\cup\{0.998\}$ $\times$
+  $\beta\in\{k/40: k = 0,\dots,40\}$. \\
+Monte Carlo & $2\times1\,500$ &
+  For each $\beta\in\{0, 0.5\}$, a separate Latin hypercube
+  sample~\cite{McKay1979} of 500 $(\eta,\rho)$ pairs with
+  $\eta\in[1,2]$ and $\rho\in[0, 0.05]$~yr$^{-1}$ (rounded to six decimals),
+  each run for the three values of $\tau$. \\
+Single-parameter $\eta$ & $2\times1\,500$ &
+  500 values of $\eta\in[1,2]$, one in each stratum of width 0.002, with
+  $\rho = 0.025$; $\beta\in\{0, 0.5\}$, three values of $\tau$. The same
+  $\eta$ values are used for both $\beta$. \\
+Single-parameter $\rho$ & 1\,666 + 1\,500 &
+  500 values of $\rho\in[0, 0.05]$~yr$^{-1}$, one in each stratum of width
+  $10^{-4}$, with $\eta = 1.5$; $\beta\in\{0, 0.5\}$, three values of $\tau$.
+  For $\beta = 0$, 166 of the $\tau = 0$ cells were run twice. \\
+Low-$\rho$ extension & 340 &
+  $\tau = 0$, $\beta = 0$; 340 equally spaced values of $\rho$ from $-0.029$
+  to $0.004$~yr$^{-1}$, extending the single-parameter $\rho$ family to low
+  consumption discount rates. \\
+DICE comparison & 31 &
+  $G(t)\equiv0$, $\tau = 0$, $\beta = 0$; 20 equally spaced values of $\rho$
+  from $-0.015579$ to $0.024421$~yr$^{-1}$, $\rho\in\{0.03, 0.03616\}$, and
+  nine values of $\rho$ chosen to give $r_\mu(2030)\approx$ 0.8, 1.0 (twice),
+  1.2, 2, 3, 4, 4.7 and 5\%~yr$^{-1}$. \\
+Infill & 2--484 per family &
+  Additional $(\eta,\rho)$ samples for Fig.~5, targeted at bands of $r_\mu$,
+  with $\eta\in[1,2]$ and $\rho$ down to $-0.041$~yr$^{-1}$; $\tau\in\{0.5,
+  0.998\}$ or $\tau = 0.5$ only. Some were re-run from warm starts to move
+  runs out of a local optimum; two runs used $s\in[0.2, 0.4]$. \\
+\end{longtable}
+
+% AUTHOR NOTE: the generator of the Latin hypercube samples is not archived.
+% The design is inferred from the samples themselves: all 500 eta strata of
+% width 0.002 are occupied, and 497 of 500 rho strata of width 1e-4 (the
+% 3 empty strata are adjacent to values lying exactly on a stratum boundary,
+% consistent with rounding to 6 decimals), whereas iid sampling would occupy
+% about 316. Sample correlations of eta and rho: -5e-5 (beta = 0) and 0.05
+% (beta = 0.5).
+% AUTHOR NOTE: the warm-started re-runs used starting controls supplied by a
+% batch driver that is not archived; their configuration files carry the
+% standard initial guesses, so re-running them performs a fresh optimization.
+% How the nine rho values targeting r_mu(2030) were found is not recorded.
+
+%======================================================================
+\section{Estimation of exogenous inputs}
+\label{sec:estimation}
+%======================================================================
+
+The estimation procedures below were run once, offline; their results were
+copied into the model configuration (Table~\ref{tab:provenance}).
+
+\begin{table}[ht]
+\centering
+\caption{Provenance of the fitted inputs.}
+\label{tab:provenance}
+\small
+\begin{tabular}{p{0.36\textwidth} l p{0.36\textwidth}}
+\toprule
+Model input & Source & Used as fitted? \\
+\midrule
+Lorenz exponents $p_k$, weights $\gamma_k$ & \ref{sec:pip}, \ref{sec:lorenz-fit} &
+  weights in full; exponents rounded to 6 decimals \\
+Gini trajectory $G(t)$ & \ref{sec:gini} & rounded to 5 decimals \\
+$L(t)$, $\sigma(t)$ & \ref{sec:dice-fits} & rounded to 4--6 significant figures \\
+$A(t)$ & \ref{sec:dice-fits} (closed form) & --- \\
+$\theta_1$, $\xi$, $\Eland$, scalar parameters & \ref{sec:other-inputs} & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Global income distribution}
+\label{sec:pip}
+
+The global income distribution was constructed from the World Bank Poverty
+and Inequality Platform~\cite{PIP} (downloaded 28 December 2025: 2\,556
+survey rows for 172 countries, 1963--2024). Rows with complete decile shares,
+population and per-capita GDP were retained, and for each country the most
+recent survey year (1992--2024) was used. Each country--decile was treated as
+a group containing one tenth of the country's population with income per
+person
+\begin{equation}
+  y_{cd} = 10\,s_{cd}\,\mathrm{GDP}_c ,
+\end{equation}
+where $s_{cd}$ is the decile's share and $\mathrm{GDP}_c$ the per-capita GDP
+reported by the platform. The 1\,720 groups were sorted by income; cumulative
+population and income fractions, with the origin prepended, define the
+empirical Lorenz curve. Its Gini coefficient, $G = 1 - 2\int_0^1\Lor\,\dd p$
+by the trapezoidal rule, is 0.680860, for a population of
+$7.719\times10^{9}$ and mean income \$11\,627.
+% AUTHOR NOTE: (1) The platform mixes income and consumption surveys, and
+% national, urban and rural coverage; nothing was filtered on either.
+% (2) Units of GDP: the script describes reporting_gdp as "PPP $", but its
+% magnitudes (US 2023: 65,505; India 2022: 2,065) look like constant US$ at
+% market exchange rates. Check the PIP documentation before stating units.
+% (3) For four countries with several rows in their latest year, the row used
+% depended on an unstable sort: China 2022 national consumption, Haiti 2012
+% income, Philippines 2023 income, St. Lucia 2015 consumption. Choosing
+% consumption for Haiti and the Philippines would give G = 0.680706.
+
+\subsection{Lorenz curve fit}
+\label{sec:lorenz-fit}
+
+The base Lorenz curve, Eq.~\eqref{eq:lorenz-base}, was fitted to the 1\,721
+points $(x_j, y_j)$ of the empirical curve (including the origin) by
+unweighted least squares, under the constraints $\gamma_k\ge0$ and
+$\sum_k\gamma_k = 1$:
+\begin{equation}
+  \min_{p}\ \min_{\gamma}\ \sum_j\left(y_j - \sum_{k=0}^{3}\gamma_k x_j^{p_k}\right)^2 .
+\end{equation}
+For fixed exponents, the weights were found by sequential quadratic
+programming (SLSQP~\cite{Kraft1988}; starting point $\gamma_k = 0.25$, function
+tolerance $10^{-15}$, at most 2\,000 iterations, finite-difference gradients
+with step $10^{-10}$). The exponents were optimized over the inner optimum
+with L-BFGS-B~\cite{Byrd1995}, starting from $p = (1.1, 7.4, 13.7, 20)$
+(equally spaced), with bounds $1.01\le p_k\le1000$ and tolerances $10^{-12}$
+on the function and the projected gradient. The fit converged in 49
+iterations to a residual sum of squares of $1.811\times10^{-3}$
+($R^2 = 0.99997863$, maximum absolute error 0.0048), giving
+$p = (1.50004,\ 4.36744,\ 14.0720,\ 135.060)$ and
+$\gamma = (0.159871,\ 0.377619,\ 0.367125,\ 0.0953854)$. In the model the
+exponents are rounded to six decimals and $\gamma_0$ is set to
+$1 - \gamma_1 - \gamma_2 - \gamma_3$. The optimum is flat: other starting
+points change the exponents by up to $1.1\times10^{-4}$ (relative) at the same
+residual.
+
+\subsection{Global Gini trajectory}
+\label{sec:gini}
+
+The trajectory $G(t)$ was derived from national projections of income decile
+shares consistent with the Shared Socioeconomic Pathways~\cite{Narayan2023},
+together with SSP projections of population and GDP per capita.
+% AUTHOR NOTE: the decile-share file (ISO_level_projections_PC_model_projections.csv)
+% is cited in the repository history as doi:10.1088/1748-9326/acbdb0; confirm
+% that this is Narayan et al. (2023), and add the source of the SSP population
+% and GDP files (pop_ssp_database.csv, All_GDP_percapita.csv), which is not
+% documented.
+For each SSP and for each of the 18 five-yearly years from 2015 to 2100, the
+165 countries with complete data were split into deciles with population
+$P_c/10$ and income per person $10\,s_{cd}(t)\,\mathrm{GDP}_c(t)$, sorted by
+income, and the global Gini coefficient was computed with the trapezoidal rule
+as above (here without prepending the origin). For SSP2 this gives
+$G = 0.5962$ (2015), $0.5651$ (2020), $0.5244$ (2050) and $0.4647$ (2100).
+
+The model's $G(t)$ is an unweighted least-squares fit of
+Eq.~\eqref{eq:tf-exp} to all 18 SSP2 values, with $t_r = t - 2020$ (so 2015
+enters as $t_r = -5$), which gives $a = 0.19517$, $b = -0.01058$~yr$^{-1}$
+and $c = 0.37796$.
+% AUTHOR NOTE: the exponential fit was not scripted; it was reconstructed and
+% confirmed (scipy curve_fit, p0 = [0.2, -0.01, 0.4]). The fit's G(2020) =
+% 0.57313 is 0.008 above the tabulated 0.565096.
+% AUTHOR NOTE (data error): in both SSP input files, the rows for Taiwan
+% (TWN) are identical to those for China (CHN), so China's population and
+% income are counted twice, the second time with Taiwan's decile shares.
+% Without TWN, the SSP2 Gini is 0.6063 (2020) and 0.4844 (2100), and the fit
+% becomes a = 0.29188, b = -0.0075665, c = 0.31927. All published runs use the
+% values with the duplicate. Decide how to report this.
+
+\subsection{Productivity, population and carbon intensity}
+\label{sec:dice-fits}
+
+$A(t)$, $L(t)$ and $\sigma(t)$ follow DICE-2023~\cite{BarrageNordhaus2024},
+whose recurrences run on five-year steps $k = 1, 2, \dots$, with
+$t_r = 5(k-1)$. Each recurrence corresponds to a Gompertz function
+(Eq.~\ref{eq:tf-gompertz}), exactly or approximately.
+
+\paragraph{Population.} DICE's $L_{k+1} = L_k\,(L_\infty/L_k)^{0.145}$ is
+exactly Gompertz, with $c = \ln(1-0.145)/5 = -0.031331$~yr$^{-1}$,
+$L_0 = 7752.9$ million and $L_\infty = 10\,825$ million.
+
+\paragraph{Carbon intensity.} DICE's $\sigma_{k+1} = \sigma_k
+\exp(5g_k)$, with $g_k = -0.015\cdot0.96^{k-1}$, is exactly Gompertz with
+$c = \ln(0.96)/5 = -0.0081644$~yr$^{-1}$ and
+$\sigma_\infty = \sigma_0\,e^{5(-0.015)/(1-0.96)} = \sigma_0\,e^{-1.875}$, until
+2155, when DICE's floor $g_k\ge-0.005$ starts to bind. The model uses the
+Gompertz form throughout; it departs from DICE by about 5\% in 2210 and 25\% in
+2280.
+
+\paragraph{Productivity.} DICE's $A_{k+1} = A_k/(1-g_{A,k})$ with
+$g_{A,k} = 0.066\,e^{-5\cdot0.0015(k-1)}$ is Gompertz in the limit of small
+growth rates. The model uses that continuous approximation,
+$c = -0.0015$~yr$^{-1}$ and
+\begin{equation}
+  A_\infty = A_0\exp\!\left(\frac{0.066}{5\times0.0015}\right) = A_0\,e^{8.8},
+\end{equation}
+with $A_0$ calibrated to DICE's 2020 gross output,
+$A_0 = Q_0/(K_0^{\alpha}L_0^{1-\alpha}) = 739.619$ for $Q_0 = 135.7$ trillion
+dollars, $K_0 = 295$ trillion dollars and $L_0 = 7.7529\times10^{9}$. Relative
+to the DICE series, the model's $A(t)$ is lower by 1.45\% in 2050, 3.57\% in
+2100 and 11.4\% in 2420.
+% AUTHOR NOTE: this derivation of A(t) was reconstructed numerically; no script
+% contains it. The fitting script in parameter_estimation/ fits A(t) directly
+% (final value 5383526.78, c = -0.00154062, within 0.04% of DICE), but that fit
+% was not used, although parameter_estimation/README.md says it was.
+
+Least-squares fits of the Gompertz form to the DICE series (initial value
+fixed; $A$ and $\sigma$ fitted in logarithms, $\sigma$ only to 2155) recover
+these values: $c = -0.0313308$ for $L$ and $c = -0.0081644$,
+$\sigma_\infty = 4.4680\times10^{-5}$ for $\sigma$.
+
+\subsection{Other inputs}
+\label{sec:other-inputs}
+
+\begin{itemize}
+  \item \emph{Land-use emissions}: $5.9\times10^9\,e^{-0.02107\,t_r}$
+  tCO$_2$~yr$^{-1}$, DICE-2023's initial land-use emissions declining by 10\%
+  per five-year period ($\ln(0.9)/5 = -0.02107$).
+  \item \emph{Emission ratio}: $\xi = 1.4\,e^{-0.002085\,t_r}$, which falls to
+  1.185 in 2100. (DICE-2023's ratio declines linearly from 1.40 in 2020 to
+  1.21 in 2100 and is constant thereafter.)
+  \item \emph{Backstop price}: a two-term exponential fit to the DICE-2023
+  backstop price.
+  \item \emph{Scalar parameters}: $\alpha$, $\delta$, $\psi_2$, $\theta_2$ and
+  $K_0$ are DICE-2023 values.
+  \item \emph{Temperature response}: the median model of
+  Ricke and Caldeira~\cite{RickeCaldeira2014}.
+\end{itemize}
+% AUTHOR NOTE: (1) the source of the emission-ratio rate -0.002085 was not
+% found; (2) no script or data for the backstop-price fit is archived;
+% (3) no derivation of y_ref = 17210.79 was found (it affects results only
+% through the clipping bounds, Sec. S5.9); (4) rho = 0.025 is labelled
+% "DICE-2023 risk-adjusted rate" in the configurations, but DICE-2023's rate
+% is exp(0.001 + 0.5*0.05) - 1 = 0.02634.
+
+%======================================================================
+\section{Construction of the figures}
+\label{sec:figures}
+%======================================================================
+
+Throughout, the optimal carbon price in 2030 is the marginal abatement cost
+(Section~\ref{sec:derived}) at $t = 2030$, and the warming in 2100 is
+$\Delta T$ at $t = 2100$. Runs are matched to target values of $\tau$ or
+$\beta$ within $\pm0.01$.
+
+\subsection{Fig.~1: distribution of damage and tax burdens}
+
+Fig.~1 is analytic. Income at rank $F$ is $y(F) = \Lor'(F)$ with $G = 0.57$,
+evaluated on 2\,000 equally spaced ranks in $[10^{-6}, 1-10^{-6}]$. With damage
+proportional to $y\cdot y^{-\beta}$, the cumulative damage share is
+\begin{equation}
+  D_\beta(F) = \frac{\int_0^F y^{1-\beta}\,\dd F'}{\int_0^1 y^{1-\beta}\,\dd F'},
+\end{equation}
+and the cumulative tax share is $T_\tau(F) = \int_0^F [y - c(y)]\,\dd F' /
+\int_0^1 [y - c(y)]\,\dd F'$, with $c$ the schedule Eq.~\eqref{eq:schedule}
+for $\eta = 1.5$ and $\Delta U$ chosen (Brent's method, tolerance $10^{-12}$)
+so that the average tax rate is 20\%. The integrals are left Riemann sums on
+the rank grid. Curves are shown for $\beta\in\{0, 0.5, 1\}$ and
+$\tau\in\{0, 0.5, 0.998\}$.
+
+\subsection{Fig.~2: reference cases}
+
+Fig.~2 shows the carbon price and warming from 2025 to 2100 for the six
+reference cases with $\beta\in\{0, 0.5\}$, $\tau\in\{0, 0.5, 0.998\}$. For each
+$\tau$, the band between $\beta = 0$ and $\beta = 0.5$ is shaded.
+
+\subsection{Fig.~3: dependence on $\tau$ and $\beta$}
+
+The 2030 carbon price and 2100 warming of the 1\,681 contour-grid runs form a
+$41\times41$ grid in $(\tau,\beta)$. For plotting, the grid values were
+interpolated to $400\times400$ points with a piecewise cubic
+(Clough--Tocher) interpolant on a Delaunay triangulation. Filled contours are
+drawn at intervals of \$10~tCO$_2^{-1}$ from \$50 to \$350~tCO$_2^{-1}$ (values
+clipped to that range, lines every \$20) and of 0.1~$^\circ$C from 1.5 to
+3.5~$^\circ$C. The strip $0.998<\tau\le1$, which was not simulated, is shaded
+grey. All runs are used, without a convergence filter.
+% AUTHOR NOTE: Fig. 3 uses every contour run, whereas Fig. 4 drops runs that
+% did not converge and Fig. 5 includes 33 points flagged as not converged.
+
+\subsection{Fig.~4 and Fig.~S1: sensitivity to $\eta$ and $\rho$}
+
+Fig.~4 uses the Monte Carlo and single-parameter families. A run is counted as
+converged if the optimizer reported success with termination on the variable
+or function tolerance; other runs are discarded. Where a parameter
+combination was run twice, the converged run is kept, and between two
+converged runs the one that used more evaluations. Every
+$(\beta,\tau)$ cell of every family retains 500 runs.
+
+For each family, $\beta$ and $\tau$, the distribution of the 2030 carbon price
+and of the 2100 warming is shown as a Gaussian kernel density estimate with
+Silverman's bandwidth~\cite{Silverman1986}, evaluated at 500 points over an
+axis range shared across rows. A dashed line marks the central case, the run
+closest to $(\eta,\rho) = (1.5, 0.025)$ in the metric
+$\sqrt{(\eta-1.5)^2 + (\log_{10}\rho - \log_{10}0.025)^2}$. For the Monte
+Carlo family with $\beta = 0$, this is $\eta = 1.509987$,
+$\rho = 0.024683$, with 2030 carbon prices of \$42.79, \$71.11 and
+\$144.96~tCO$_2^{-1}$ for $\tau = 0$, 0.5 and 0.998. Fig.~S1 plots the same
+runs as the 2030 carbon price against the 2100 warming.
+
+\subsection{The consumption discount rate $r_\mu$}
+\label{sec:rmu}
+
+Figs.~5 and~S3 are plotted against the consumption discount rate in 2030,
+\begin{equation}
+  r_\mu = \rho + \eta\sum_j \varpi_j \ln\frac{c_j(2031)}{c_j(2030)},
+  \qquad
+  \varpi_j = \frac{w_j\,c_j(2030)^{-\eta}}{\sum_k w_k\,c_k(2030)^{-\eta}},
+  \label{eq:rmu}
+\end{equation}
+with $c_j = (1-s)\,y_{\mathrm{n},j}$: $\rho$ plus $\eta$ times the
+marginal-utility-weighted logarithmic growth rate of consumption. For $G = 0$
+it reduces to $\rho + \eta\ln[\bar c(2031)/\bar c(2030)]$.
+% AUTHOR NOTE: the code that computed r_mu is not archived. Eq. (rmu) is
+% reconstructed from the stored values: it reproduces them to 5e-5 percentage
+% points for the base case and 0.002-0.004 pp across the Fig. 5 groups, better
+% than simple (rather than logarithmic) growth (0.023 pp) or the discrete
+% Ramsey rule of Eq. (ramsey) (9e-4 pp). Confirm before publication.
+
+\subsection{Fig.~5: carbon price against $r_\mu$}
+
+Fig.~5 combines the Monte Carlo, single-parameter and infill runs with
+$1\le r_\mu\le6$\%~yr$^{-1}$ (5\,254 runs), grouped by $\beta$ and $\tau$.
+Where the same parameters were run in more than one family, one run was kept;
+this is how warm-started re-runs replace runs that had stopped in a local
+optimum. The 2030 carbon price is shown on a logarithmic axis.
+% AUTHOR NOTE: the curated point set (outputs/audits/points_cloud_1_6_balanced.csv)
+% was built by a script that is not archived. Its selection rule and the
+% "d_score" column are undocumented; 670 rows are marked as having duplicates
+% in another family; 54 Monte Carlo runs with tau = 0.5 and r_mu of 5.1-5.5%
+% that Fig. 4 counts as converged are absent ("balanced" thinning); and the
+% 33 rows flagged as not converged are plotted.
+
+\subsection{Fig.~S2: consumption growth across the distribution}
+
+For the base case ($\tau = 0$, $\beta = 0$), the consumption growth rate of
+node $j$ is $g_j(t) = 100\,[c_j(t+1)/c_j(t) - 1]$~\%~yr$^{-1}$, with
+$c_j = (1-s)\,y_{\mathrm{n},j}$. In 2030 the population-mean growth rate is
+$\bar g = \sum_j w_j g_j = 1.794$\%~yr$^{-1}$ and the
+marginal-utility-weighted rate is $g_\mu = \sum_j\varpi_j g_j =
+2.142$\%~yr$^{-1}$, with $\varpi_j$ as in Eq.~\eqref{eq:rmu}; the poorest node
+grows at 2.779\% and the richest at 1.065\%~yr$^{-1}$. The contour panel
+interpolates $g_j(t)$ for 2030--2100 (71 years $\times$ 32 nodes) to
+$400\times400$ points by cubic interpolation, smooths it with a Gaussian
+filter (standard deviations of about 2.1~yr and 2\% of rank), and draws
+contours from 1.0 to 3.0\%~yr$^{-1}$.
+
+\subsection{Fig.~S3: comparison with DICE-2023}
+
+Fig.~S3 shows the 2030 carbon price against $r_\mu$ for (i) the 31 runs with
+$G\equiv0$ (DICE comparison family), interpolated with PCHIP through the 30
+runs with $r_\mu\le5.1$\%~yr$^{-1}$; (ii) the 840 runs with the empirical Gini
+trajectory, $\tau = 0$ and $\beta = 0$ (single-parameter $\rho$ and low-$\rho$
+families; where a run was duplicated, the one with the higher objective was
+kept), interpolated with PCHIP through the 567 runs with
+$0.5\le r_\mu\le5.5$\%~yr$^{-1}$ and evaluated at $r_\mu = 1, \dots, 5$\%;
+and (iii) the DICE-2023 carbon prices in 2030 at constant discount rates of
+1--5\% (\$595, 224, 114, 66 and 43~tCO$_2^{-1}$, from the DICE-2023
+workbook~\cite{BarrageNordhaus2024}).
+Table~\ref{tab:figs3} gives the plotted values.
+
+\begin{table}[ht]
+\centering
+\caption{Optimal 2030 carbon price (\$ tCO$_2^{-1}$) against the consumption
+discount rate $r_\mu$, as plotted in Fig.~S3.}
+\label{tab:figs3}
+\small
+\begin{tabular}{l r r r r r}
+\toprule
+$r_\mu$ (\%~yr$^{-1}$) & 1 & 2 & 3 & 4 & 5 \\
+\midrule
+This model, $G = 0$ & 396.40 & 213.99 & 112.12 & 62.33 & 38.43 \\
+This model, empirical Gini & 650.94 & 380.95 & 204.74 & 107.17 & 59.65 \\
+DICE-2023 & 595 & 224 & 114 & 66 & 43 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%======================================================================
+\section{Verification}
+\label{sec:verification}
+%======================================================================
+
+The repository contains a regression suite that compares the model with a
+baseline computed by the code used for the manuscript: forward replays of the
+nine reference runs with their published controls (relative tolerance
+$10^{-12}$ for $\tau = 0$ and $10^{-9}$ for $\tau>0$, set by the tax root
+solve), the published results files themselves, a DICE-comparison run, six
+cases exercising the options not used in the manuscript, three short
+optimizations, and the individual numerical kernels.
+
+Table~\ref{tab:checkpoints} gives reference values from the replay of the
+base case ($\tau = 0$, $\beta = 0$; $J = -6.487938701598822\times10^{9}$).
+For $\tau = 0.5$, $\beta = 0.5$, $J = -6.508855233019977\times10^{9}$; for
+$\tau = 0.998$, $\beta = 1$, $J = -6.510344441554529\times10^{9}$.
+
+\begin{table}[ht]
+\centering
+\caption{Reference values from the replay of the base case
+($\tau = 0$, $\beta = 0$).}
+\label{tab:checkpoints}
+\small
+\begin{tabular}{l l l l}
+\toprule
+Quantity & 2020 & 2030 & 2100 \\
+\midrule
+$f$ & 1.543376572092825 & 1.629652538702295 & 2.395393167065027 \\
+$s$ & 0.4786271018324223 & 0.2296397516562726 & 0.2300201664610637 \\
+$K$ (\$) & $2.95\times10^{14}$ & $3.402759806869976\times10^{14}$ &
+  $1.343287212994556\times10^{15}$ \\
+$\Delta T$ ($^\circ$C) & 1.16966 & 1.470360532030760 & 3.107513349030306 \\
+$\yn$ (\$) & $1.741645953981179\times10^{4}$ & $2.010579385432332\times10^{4}$ &
+  $6.519107748253394\times10^{4}$ \\
+$\mu$ & $3.996318342682483\times10^{-2}$ & $1.280010855705555\times10^{-1}$ &
+  $6.313729676087462\times10^{-1}$ \\
+$\Omega$ & $4.743218355585199\times10^{-3}$ & $7.495515646431158\times10^{-3}$ &
+  $3.347956815633018\times10^{-2}$ \\
+$U$ & $-2.360533615801890\times10^{8}$ & $-1.915743595569843\times10^{8}$ &
+  $-1.180399699134512\times10^{8}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%======================================================================
+\section{Numerical properties of the method}
+\label{sec:caveats}
+%======================================================================
+
+The following properties are part of the method as used for the published
+results.
+\begin{enumerate}
+  \item \emph{Lagged damage distribution.} Each step applies the previous
+  step's distribution of damage across incomes, scaled to the current
+  aggregate damage (Section~\ref{sec:damage}). The first step uses uniform
+  damage.
+  \item \emph{Mean pre-tax income.} The node incomes $y_{\mathrm{pre},i}$
+  average to $\yd$ only approximately (Section~\ref{sec:step}); the closed form
+  of the flat tax assumes that they do.
+  \item \emph{Quadrature error.} With 32 nodes, the mean of the empirical
+  Lorenz density is in error by $3$--$7\times10^{-7}$ (relative).
+  \item \emph{Safeguards.} Damage fractions are confined to
+  $[0, 1-\varepsilon]$, abatement expenditure to at most $(1-\varepsilon)\yd$,
+  consumption to at least $\varepsilon$ in the utility, and the flat tax rate
+  to at most $1-\varepsilon$, with $\varepsilon = 10^{-12}$ in absolute terms
+  for quantities of different scale (fractions and dollars per person). The
+  flat-tax case is selected by $|\etat - 1|<\varepsilon$, whereas logarithmic
+  utility is used only for $\eta = 1$ exactly.
+  \item \emph{Infeasible trajectories} receive the values $-10^{17}$ or
+  $-10^{30}$ at the optimizer interface (Section~\ref{sec:nlopt}).
+  \item \emph{State constraints.} $\Ecum\ge0$ is the only constraint on the
+  state; $\mu$ is effectively unbounded ($\mu_{\max} = 10^{20}$).
+\end{enumerate}
+
+%======================================================================
+\begin{thebibliography}{99}
+%======================================================================
+
+\bibitem{BarrageNordhaus2024}
+L.~Barrage, W.~Nordhaus, Policies, projections, and the social cost of carbon:
+Results from the DICE-2023 model. \emph{Proc. Natl. Acad. Sci. U.S.A.}
+\textbf{121}, e2312030121 (2024).
+
+\bibitem{Caldeira2023}
+K.~Caldeira \emph{et al.}, \emph{Environ. Res. Lett.} (2023),
+doi:10.1088/1748-9326/acf949.
+% AUTHOR NOTE: complete this reference (authors, title, volume).
+
+\bibitem{RickeCaldeira2014}
+K.~L. Ricke, K.~Caldeira, Maximum warming occurs about one decade after a
+carbon dioxide emission. \emph{Environ. Res. Lett.} \textbf{9}, 124002 (2014).
+
+\bibitem{Harris2020}
+C.~R. Harris \emph{et al.}, Array programming with NumPy. \emph{Nature}
+\textbf{585}, 357--362 (2020).
+
+\bibitem{Virtanen2020}
+P.~Virtanen \emph{et al.}, SciPy 1.0: fundamental algorithms for scientific
+computing in Python. \emph{Nat. Methods} \textbf{17}, 261--272 (2020).
+
+\bibitem{NLopt}
+S.~G. Johnson, The NLopt nonlinear-optimization package,
+\url{https://github.com/stevengj/nlopt}.
+
+\bibitem{Rowan1990}
+T.~H. Rowan, Functional stability analysis of numerical algorithms. PhD thesis,
+University of Texas at Austin (1990).
+
+\bibitem{Brent1973}
+R.~P. Brent, \emph{Algorithms for Minimization without Derivatives}
+(Prentice-Hall, 1973).
+
+\bibitem{FritschCarlson1980}
+F.~N. Fritsch, R.~E. Carlson, Monotone piecewise cubic interpolation.
+\emph{SIAM J. Numer. Anal.} \textbf{17}, 238--246 (1980).
+
+\bibitem{FritschButland1984}
+F.~N. Fritsch, J.~Butland, A method for constructing local monotone piecewise
+cubic interpolants. \emph{SIAM J. Sci. Stat. Comput.} \textbf{5}, 300--304
+(1984).
+
+\bibitem{McKay1979}
+M.~D. McKay, R.~J. Beckman, W.~J. Conover, A comparison of three methods for
+selecting values of input variables in the analysis of output from a computer
+code. \emph{Technometrics} \textbf{21}, 239--245 (1979).
+
+\bibitem{PIP}
+World Bank, Poverty and Inequality Platform, \url{https://pip.worldbank.org}
+(accessed 28 December 2025).
+
+\bibitem{Kraft1988}
+D.~Kraft, A software package for sequential quadratic programming. Tech. Rep.
+DFVLR-FB 88-28, Deutsche Forschungs- und Versuchsanstalt f\"ur Luft- und Raumfahrt (1988).
+
+\bibitem{Byrd1995}
+R.~H. Byrd, P.~Lu, J.~Nocedal, C.~Zhu, A limited memory algorithm for bound
+constrained optimization. \emph{SIAM J. Sci. Comput.} \textbf{16}, 1190--1208
+(1995).
+
+\bibitem{Narayan2023}
+K.~B. Narayan, B.~C. O'Neill, S.~T. Waldhoff, C.~Tebaldi, Non-parametric
+projections of national income distribution consistent with the Shared
+Socioeconomic Pathways. \emph{Environ. Res. Lett.} \textbf{18}, 044013 (2023).
+% AUTHOR NOTE: verify this reference against doi:10.1088/1748-9326/acbdb0.
+
+\bibitem{Silverman1986}
+B.~W. Silverman, \emph{Density Estimation for Statistics and Data Analysis}
+(Chapman and Hall, 1986).
+
+\end{thebibliography}
+
+\end{document}

@@ -2,7 +2,7 @@
 
 This document explains the cleanup done in October 2026 on branch `refactor-cleanup` and then merged into `main`. It covers what changed, how we made sure results did not change, and what to know when working with the cleaned-up code.
 
-The starting point was the code of the public release (`Sustainable-Solutions-Lab/coin-equality`, commit `fb5965c3` in this repo). It had grown organically:
+The starting point was the code of the public release (`Sustainable-Solutions-Lab/coin-equality-pnas`, commit `fb5965c3` in this repo). It had grown organically:
 - three near-identical copies of the NLopt optimizer setup;
 - separate code paths for optimizing f alone and f with s;
 - output-variable lists maintained by hand in three or four places;
