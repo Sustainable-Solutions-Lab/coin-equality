@@ -1,0 +1,403 @@
+Config: 9cases_s
+Task ID: 9 / 9
+Grid ID: 9
+Parameters: tax_equity=0.998, ydmg=1.0, eta=1.5, rho=0.025
+Run name: 9cases_s_gid-9
+Output directory: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234
+
+================================================================================
+  FRESH OPTIMIZATION (iterative refinement)
+  Algorithm: LN_SBPLX
+  Iterations: 5
+  Max evaluations initial: 2000
+  Max evaluations final: 100000
+  Control points: 4 -> 24 (f)
+  Control points: 4 -> 24 (s)
+================================================================================
+
+
+Iterative refinement: 5 iterations, base_f = 1.6640, base_evaluations = 2.6595
+Control point spacing: dynamic wind-down region (t > 2380.0 years)
+Target final f points: 24
+Max evaluations: initial=2000, final=100000
+Optimizing both f and s: base_s = 1.6640
+Target final s points: 24
+
+================================================================================
+  ITERATION 1/5
+  Algorithm: LN_SBPLX
+  Max evaluations: 2000
+  Spacing: segment 1 growth r0=179.0000, segment 2 growth r1=0.0000
+
+  f (log10 of MAC) - OPTIMIZED:
+    Control points: 4
+    Time points: [2020. 2021. 2380. 2420.]
+
+  s (savings rate) - OPTIMIZED:
+    Control points: 4
+    Time points: [2020. 2021. 2380. 2420.]
+    Spacing: segment 1 growth r0=179.0000, segment 2 growth r1=0.0000
+================================================================================
+
+
+Iteration 1 complete:
+  Objective value: -6.510778377569e+09
+  Evaluations: 2000
+  Elapsed time: 877.69 seconds
+  Status: MAXEVAL_REACHED
+
+  Optimized f values: [2.07646513 2.38983273 3.21498873 3.71854471]
+  Optimized s values: [0.47859776 0.23051482 0.24639065 0.05147227]
+
+================================================================================
+  ITERATION 2/5
+  Algorithm: LN_SBPLX
+  Max evaluations: 5317
+  Spacing: segment 1 growth r0=5.7443, segment 2 growth r1=0.0000
+
+  f (log10 of MAC) - OPTIMIZED:
+    Control points: 6
+    Time points: [2020.         2021.         2027.74431129 2073.230046   2380.
+ 2420.        ]
+
+  s (savings rate) - OPTIMIZED:
+    Control points: 6
+    Time points: [2020.         2021.         2027.74431129 2073.230046   2380.
+ 2420.        ]
+    Spacing: segment 1 growth r0=5.7443, segment 2 growth r1=0.0000
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 1000000 calls)
+================================================================================
+Total time:            620.23 s  (100.0%)
+  Setup:                25.20 s  (  4.1%)
+  Policy calc:         440.49 s  ( 71.0%)
+    find_deltaU:       434.84 s  ( 70.1%)
+  Segment 2:           128.52 s  ( 20.7%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:           20.15 s  (  3.2%)
+  Climate:               1.11 s  (  0.2%)
+  Finalize:              3.89 s  (  0.6%)
+Avg time per call:      0.620 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 2000000 calls)
+================================================================================
+Total time:           1246.97 s  (100.0%)
+  Setup:                50.68 s  (  4.1%)
+  Policy calc:         886.13 s  ( 71.1%)
+    find_deltaU:       874.79 s  ( 70.2%)
+  Segment 2:           257.92 s  ( 20.7%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:           40.42 s  (  3.2%)
+  Climate:               2.23 s  (  0.2%)
+  Finalize:              7.84 s  (  0.6%)
+Avg time per call:      0.623 ms
+================================================================================
+
+
+Iteration 2 complete:
+  Objective value: -6.510457568252e+09
+  Evaluations: 5317
+  Elapsed time: 2371.21 seconds
+  Status: MAXEVAL_REACHED
+
+  Optimized f values: [2.08538492 2.4263807  2.42840248 2.70386144 3.04905512 3.72539662]
+  Optimized s values: [0.48110808 0.20928217 0.23099812 0.23430404 0.21900993 0.09833333]
+
+================================================================================
+  ITERATION 3/5
+  Algorithm: LN_SBPLX
+  Max evaluations: 14140
+  Spacing: segment 1 growth r0=1.4440, segment 2 growth r1=0.0000
+
+  f (log10 of MAC) - OPTIMIZED:
+    Control points: 9
+    Time points: [2020.         2021.         2023.44399568 2029.41711054 2044.01537744
+ 2079.69347861 2166.89060359 2380.         2420.        ]
+
+  s (savings rate) - OPTIMIZED:
+    Control points: 9
+    Time points: [2020.         2021.         2023.44399568 2029.41711054 2044.01537744
+ 2079.69347861 2166.89060359 2380.         2420.        ]
+    Spacing: segment 1 growth r0=1.4440, segment 2 growth r1=0.0000
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 3000000 calls)
+================================================================================
+Total time:           1873.62 s  (100.0%)
+  Setup:                76.11 s  (  4.1%)
+  Policy calc:        1332.06 s  ( 71.1%)
+    find_deltaU:      1315.04 s  ( 70.2%)
+  Segment 2:           387.09 s  ( 20.7%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:           60.61 s  (  3.2%)
+  Climate:               3.35 s  (  0.2%)
+  Finalize:             11.77 s  (  0.6%)
+Avg time per call:      0.625 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 4000000 calls)
+================================================================================
+Total time:           2521.39 s  (100.0%)
+  Setup:               101.59 s  (  4.0%)
+  Policy calc:        1797.89 s  ( 71.3%)
+    find_deltaU:      1775.02 s  ( 70.4%)
+  Segment 2:           517.34 s  ( 20.5%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:           80.85 s  (  3.2%)
+  Climate:               4.47 s  (  0.2%)
+  Finalize:             15.74 s  (  0.6%)
+Avg time per call:      0.630 ms
+================================================================================
+
+
+Iteration 3 complete:
+  Objective value: -6.510387723499e+09
+  Evaluations: 2937
+  Elapsed time: 1337.09 seconds
+  Status: XTOL_REACHED
+
+  Optimized f values: [2.08509175 2.44520888 2.42247374 2.42932141 2.50729365 2.72651776
+ 2.8245604  2.53526677 3.26722015]
+  Optimized s values: [0.48123556 0.20827666 0.21754075 0.22982549 0.23520587 0.23298075
+ 0.23271379 0.2341944  0.06249308]
+
+================================================================================
+  ITERATION 4/5
+  Algorithm: LN_SBPLX
+  Max evaluations: 37602
+  Spacing: segment 1 growth r0=0.5558, segment 2 growth r1=0.0000
+
+  f (log10 of MAC) - OPTIMIZED:
+    Control points: 15
+    Time points: [2020.         2021.         2022.55577704 2024.97621925 2028.74188767
+ 2034.60042815 2043.71501094 2057.89526959 2079.95659047 2114.27908703
+ 2167.67723924 2250.75285858 2380.         2410.         2420.        ]
+
+  s (savings rate) - OPTIMIZED:
+    Control points: 15
+    Time points: [2020.         2021.         2022.55577704 2024.97621925 2028.74188767
+ 2034.60042815 2043.71501094 2057.89526959 2079.95659047 2114.27908703
+ 2167.67723924 2250.75285858 2380.         2410.         2420.        ]
+    Spacing: segment 1 growth r0=0.5558, segment 2 growth r1=0.0000
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 5000000 calls)
+================================================================================
+Total time:           3169.15 s  (100.0%)
+  Setup:               126.90 s  (  4.0%)
+  Policy calc:        2264.42 s  ( 71.5%)
+    find_deltaU:      2235.76 s  ( 70.5%)
+  Segment 2:           647.13 s  ( 20.4%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          101.04 s  (  3.2%)
+  Climate:               5.59 s  (  0.2%)
+  Finalize:             19.68 s  (  0.6%)
+Avg time per call:      0.634 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 6000000 calls)
+================================================================================
+Total time:           3815.65 s  (100.0%)
+  Setup:               152.19 s  (  4.0%)
+  Policy calc:        2729.61 s  ( 71.5%)
+    find_deltaU:      2695.15 s  ( 70.6%)
+  Segment 2:           777.07 s  ( 20.4%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          121.18 s  (  3.2%)
+  Climate:               6.72 s  (  0.2%)
+  Finalize:             23.62 s  (  0.6%)
+Avg time per call:      0.636 ms
+================================================================================
+
+
+Iteration 4 complete:
+  Objective value: -6.510346943314e+09
+  Evaluations: 6099
+  Elapsed time: 2781.16 seconds
+  Status: XTOL_REACHED
+
+  Optimized f values: [2.08500052 2.44463753 2.43223755 2.42234518 2.42438865 2.44909443
+ 2.50808462 2.60285388 2.71447759 2.81896139 2.79530837 2.63989584
+ 2.63305755 2.63305755 2.73054503]
+  Optimized s values: [4.81236011e-01 2.07694489e-01 2.14458892e-01 2.21678758e-01
+ 2.28798933e-01 2.33379348e-01 2.35010580e-01 2.34296795e-01
+ 2.33241618e-01 2.32766963e-01 2.32828668e-01 2.33176057e-01
+ 2.34979668e-01 1.48426265e-01 1.52139484e-11]
+
+================================================================================
+  ITERATION 5/5
+  Algorithm: LN_SBPLX
+  Max evaluations: 100000
+  Spacing: segment 1 growth r0=0.2363, segment 2 growth r1=0.0000
+
+  f (log10 of MAC) - OPTIMIZED:
+    Control points: 24
+    Time points: [2020.         2021.         2022.23634324 2023.76488786 2025.65469367
+ 2027.99114231 2030.87979481 2034.45116081 2038.86659503 2044.3255873
+ 2051.07477551 2059.41908876 2069.73552407 2082.49017916 2098.25931081
+ 2117.75537018 2141.85919147 2171.65978808 2208.50355435 2254.05509586
+ 2310.37243645 2380.         2410.         2420.        ]
+
+  s (savings rate) - OPTIMIZED:
+    Control points: 24
+    Time points: [2020.         2021.         2022.23634324 2023.76488786 2025.65469367
+ 2027.99114231 2030.87979481 2034.45116081 2038.86659503 2044.3255873
+ 2051.07477551 2059.41908876 2069.73552407 2082.49017916 2098.25931081
+ 2117.75537018 2141.85919147 2171.65978808 2208.50355435 2254.05509586
+ 2310.37243645 2380.         2410.         2420.        ]
+    Spacing: segment 1 growth r0=0.2363, segment 2 growth r1=0.0000
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 7000000 calls)
+================================================================================
+Total time:           4462.64 s  (100.0%)
+  Setup:               177.46 s  (  4.0%)
+  Policy calc:        3195.51 s  ( 71.6%)
+    find_deltaU:      3155.27 s  ( 70.7%)
+  Segment 2:           906.81 s  ( 20.3%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          141.32 s  (  3.2%)
+  Climate:               7.83 s  (  0.2%)
+  Finalize:             27.57 s  (  0.6%)
+Avg time per call:      0.638 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 8000000 calls)
+================================================================================
+Total time:           5112.99 s  (100.0%)
+  Setup:               202.85 s  (  4.0%)
+  Policy calc:        3663.87 s  ( 71.7%)
+    find_deltaU:      3617.84 s  ( 70.8%)
+  Segment 2:          1037.25 s  ( 20.3%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          161.51 s  (  3.2%)
+  Climate:               8.96 s  (  0.2%)
+  Finalize:             31.53 s  (  0.6%)
+Avg time per call:      0.639 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 9000000 calls)
+================================================================================
+Total time:           5766.14 s  (100.0%)
+  Setup:               228.32 s  (  4.0%)
+  Policy calc:        4134.49 s  ( 71.7%)
+    find_deltaU:      4082.65 s  ( 70.8%)
+  Segment 2:          1168.08 s  ( 20.3%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          181.77 s  (  3.2%)
+  Climate:              10.08 s  (  0.2%)
+  Finalize:             35.50 s  (  0.6%)
+Avg time per call:      0.641 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 10000000 calls)
+================================================================================
+Total time:           6417.39 s  (100.0%)
+  Setup:               253.76 s  (  4.0%)
+  Policy calc:        4603.46 s  ( 71.7%)
+    find_deltaU:      4545.83 s  ( 70.8%)
+  Segment 2:          1298.75 s  ( 20.2%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          201.98 s  (  3.1%)
+  Climate:              11.21 s  (  0.2%)
+  Finalize:             39.45 s  (  0.6%)
+Avg time per call:      0.642 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 11000000 calls)
+================================================================================
+Total time:           7070.31 s  (100.0%)
+  Setup:               279.30 s  (  4.0%)
+  Policy calc:        5073.85 s  ( 71.8%)
+    find_deltaU:      5010.45 s  ( 70.9%)
+  Segment 2:          1429.50 s  ( 20.2%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          222.24 s  (  3.1%)
+  Climate:              12.34 s  (  0.2%)
+  Finalize:             43.42 s  (  0.6%)
+Avg time per call:      0.643 ms
+================================================================================
+
+
+================================================================================
+TIMING STATISTICS (after 12000000 calls)
+================================================================================
+Total time:           7722.40 s  (100.0%)
+  Setup:               304.80 s  (  3.9%)
+  Policy calc:        5543.46 s  ( 71.8%)
+    find_deltaU:      5474.27 s  ( 70.9%)
+  Segment 2:          1560.29 s  ( 20.2%)
+  Utility calc:          0.00 s  (  0.0%)
+  Damage agg:          242.46 s  (  3.1%)
+  Climate:              13.46 s  (  0.2%)
+  Finalize:             47.38 s  (  0.6%)
+Avg time per call:      0.644 ms
+================================================================================
+
+
+Iteration 5 complete:
+  Objective value: -6.510344441555e+09
+  Evaluations: 14179
+  Elapsed time: 6533.24 seconds
+  Status: XTOL_REACHED
+
+  Optimized f values: [2.08500501 2.44500065 2.43430837 2.42661736 2.42194311 2.42340565
+ 2.43045444 2.44772993 2.47537174 2.51234761 2.55829337 2.6114258
+ 2.66894867 2.72711224 2.77994681 2.8190565  2.82853439 2.78038753
+ 2.70505971 2.6520562  2.61554652 2.57862022 2.56211372 2.53405793]
+  Optimized s values: [4.81236541e-01 2.07572496e-01 2.13078802e-01 2.18291591e-01
+ 2.23373467e-01 2.27695339e-01 2.31077952e-01 2.33297872e-01
+ 2.34507027e-01 2.34966093e-01 2.34779774e-01 2.34227593e-01
+ 2.33610736e-01 2.33132733e-01 2.32902447e-01 2.32808742e-01
+ 2.32808742e-01 2.32825275e-01 2.32943471e-01 2.33321191e-01
+ 2.33528174e-01 2.36600375e-01 1.47383656e-01 2.81041546e-11]
+
+Optimization complete:
+  Status: XTOL_REACHED
+  Objective: -6.510344441555e-04
+  Evaluations: 30532
+  Iterations: 5
+
+Running forward integration...
+
+Focal metrics:
+  MAC@2030:     $267.74/tCO2
+  MAC@2100:     $608.68/tCO2
+  delta_T@2100: 1.6849 C
+  mu@2030:      0.403644
+  mu@2100:      1.105113
+  Omega@2100:   0.009842
+  y_net@2100:   $64923.91
+  aggregate_utility: -6.510344441555e+09
+Results CSV: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234/9cases_s_gid-9_results.csv
+Distribution data saved to: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234/9cases_s_gid-9_distributions.xlsx
+Distributions XLSX: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234/9cases_s_gid-9_distributions.xlsx
+Optimization summary: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234/9cases_s_gid-9_optimization_summary.csv
+Config copy: data/output/prod/9cases_s/9cases_s_gid-9_20260709_231234/9cases_s_gid-9.json
+
+Runtime: 13902.79 seconds
+Success: True

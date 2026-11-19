@@ -1,0 +1,2 @@
+run_name,grid_id,tax_equity,y_damage_distribution_exponent,eta,rho,success,optimizer_status,objective_value,n_iterations,n_evaluations,runtime_seconds,mac_2030,mac_2100,delta_t_2100,mu_2030,mu_2100,Omega_2100,y_net_2100,aggregate_utility,error_message
+9cases_s_gid-9,9,0.998,1.0,1.5,0.025,True,XTOL_REACHED,-0.000651034444155453,5,30532,13902.79,267.7371262072451,608.6765224859055,1.6848524558167761,0.4036441750960487,1.1051134085357175,0.009841869275221606,64923.913413984024,-6510344441.554529,

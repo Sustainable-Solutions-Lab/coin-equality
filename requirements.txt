@@ -1,0 +1,16 @@
+# Core scientific computing
+numpy>=2.0.0  # np.trapezoid
+scipy>=1.10.0
+
+# Data manipulation and analysis
+pandas>=2.0.0
+openpyxl>=3.1.0
+
+# Plotting and visualization
+matplotlib>=3.7.0
+
+# Optimization
+nlopt>=2.7.0
+
+# Regression tests (pytest)
+pytest>=7.3.0

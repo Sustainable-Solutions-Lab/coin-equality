@@ -1,0 +1,26 @@
+{
+    "A": {
+        "_description": "Total factor productivity (TFP)",
+        "type": "gompertz_growth",
+        "initial_value": 739.619,
+        "final_value": 5383526.77859792,
+        "adjustment_coefficient": -0.0015406238862464446,
+        "_provenance": "Fit by parameter_estimation/dice_timefunctions/fit_dice_timefunctions.py to Barrage & Nordhaus 2023 (DICE-2023) GAMS recurrences."
+    },
+    "L": {
+        "_description": "Population",
+        "type": "gompertz_growth",
+        "initial_value": 7752900000.0,
+        "final_value": 10825000000.0,
+        "adjustment_coefficient": -0.03133076200907536,
+        "_provenance": "Fit by parameter_estimation/dice_timefunctions/fit_dice_timefunctions.py to Barrage & Nordhaus 2023 (DICE-2023) GAMS recurrences."
+    },
+    "sigma": {
+        "_description": "Carbon intensity of GDP",
+        "type": "gompertz_growth",
+        "initial_value": 0.00029135,
+        "final_value": 4.467996959027015e-05,
+        "adjustment_coefficient": -0.008164398904051053,
+        "_provenance": "Fit by parameter_estimation/dice_timefunctions/fit_dice_timefunctions.py to Barrage & Nordhaus 2023 (DICE-2023) GAMS recurrences."
+    }
+}

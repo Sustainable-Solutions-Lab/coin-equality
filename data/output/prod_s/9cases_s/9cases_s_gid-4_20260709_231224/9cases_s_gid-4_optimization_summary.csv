@@ -1,0 +1,134 @@
+Optimization Summary
+
+Parameter,Value
+Optimal f value at control point 0,1.723790
+Optimal f value at control point 1,1.726626
+Optimal f value at control point 2,1.731888
+Optimal f value at control point 3,1.740808
+Optimal f value at control point 4,1.754716
+Optimal f value at control point 5,1.775362
+Optimal f value at control point 6,1.804527
+Optimal f value at control point 7,1.843895
+Optimal f value at control point 8,1.894975
+Optimal f value at control point 9,1.958688
+Optimal f value at control point 10,2.035820
+Optimal f value at control point 11,2.126544
+Optimal f value at control point 12,2.230773
+Optimal f value at control point 13,2.347518
+Optimal f value at control point 14,2.473853
+Optimal f value at control point 15,2.603138
+Optimal f value at control point 16,2.720640
+Optimal f value at control point 17,2.801030
+Optimal f value at control point 18,2.805930
+Optimal f value at control point 19,2.690745
+Optimal f value at control point 20,2.629283
+Optimal f value at control point 21,2.579252
+Optimal f value at control point 22,2.570780
+Optimal f value at control point 23,1.978068
+Optimal s value at control point 0,0.477979
+Optimal s value at control point 1,0.206419
+Optimal s value at control point 2,0.211784
+Optimal s value at control point 3,0.216846
+Optimal s value at control point 4,0.221802
+Optimal s value at control point 5,0.226066
+Optimal s value at control point 6,0.229408
+Optimal s value at control point 7,0.231590
+Optimal s value at control point 8,0.232641
+Optimal s value at control point 9,0.232723
+Optimal s value at control point 10,0.232101
+Optimal s value at control point 11,0.231267
+Optimal s value at control point 12,0.230488
+Optimal s value at control point 13,0.230095
+Optimal s value at control point 14,0.230401
+Optimal s value at control point 15,0.231472
+Optimal s value at control point 16,0.233114
+Optimal s value at control point 17,0.234204
+Optimal s value at control point 18,0.234258
+Optimal s value at control point 19,0.233519
+Optimal s value at control point 20,0.233519
+Optimal s value at control point 21,0.236659
+Optimal s value at control point 22,0.147151
+Optimal s value at control point 23,0.000000
+Optimal objective,-6.518138836470e-04
+Function evaluations,24055
+Status,success
+Algorithm,LN_SBPLX
+Number of iterations,5
+
+Final f(t) Control Points
+Time,f Value
+2020.00,1.723790
+2021.00,1.726626
+2022.24,1.731888
+2023.76,1.740808
+2025.65,1.754716
+2027.99,1.775362
+2030.88,1.804527
+2034.45,1.843895
+2038.87,1.894975
+2044.33,1.958688
+2051.07,2.035820
+2059.42,2.126544
+2069.74,2.230773
+2082.49,2.347518
+2098.26,2.473853
+2117.76,2.603138
+2141.86,2.720640
+2171.66,2.801030
+2208.50,2.805930
+2254.06,2.690745
+2310.37,2.629283
+2380.00,2.579252
+2410.00,2.570780
+2420.00,1.978068
+
+Final s(t) Control Points
+Time,s Value
+2020.00,0.477979
+2021.00,0.206419
+2022.24,0.211784
+2023.76,0.216846
+2025.65,0.221802
+2027.99,0.226066
+2030.88,0.229408
+2034.45,0.231590
+2038.87,0.232641
+2044.33,0.232723
+2051.07,0.232101
+2059.42,0.231267
+2069.74,0.230488
+2082.49,0.230095
+2098.26,0.230401
+2117.76,0.231472
+2141.86,0.233114
+2171.66,0.234204
+2208.50,0.234258
+2254.06,0.233519
+2310.37,0.233519
+2380.00,0.236659
+2410.00,0.147151
+2420.00,0.000000
+
+Iterative Refinement - Iteration History
+Iteration,Control_Points,Objective,Evaluations,Status
+1,4,-6.518700173252e-04,2000,MAXEVAL_REACHED
+2,6,-6.518502125517e-04,5317,MAXEVAL_REACHED
+3,9,-6.518145934466e-04,4277,XTOL_REACHED
+4,15,-6.518141918838e-04,4621,XTOL_REACHED
+5,24,-6.518138836470e-04,7840,XTOL_REACHED
+
+Iterative Refinement - Control Values by Iteration
+Iteration,Control_Points,f_0,f_1,f_2,f_3,f_4,f_5,f_6,f_7,f_8,f_9,f_10,f_11,f_12,f_13,f_14,f_15,f_16,f_17,f_18,f_19,f_20,f_21,f_22,f_23
+1,4,1.441083,1.751038,3.092375,1.807234,,,,,,,,,,,,,,,,,,,,
+2,6,1.729747,1.749609,1.768203,2.320859,3.173127,1.611807,,,,,,,,,,,,,,,,,,
+3,9,1.723624,1.727025,1.738153,1.790581,1.953874,2.325090,2.793368,2.562981,2.551563,,,,,,,,,,,,,,,
+4,15,1.723761,1.726664,1.733508,1.749410,1.782578,1.845659,1.951718,2.110273,2.325490,2.579593,2.800366,2.725157,2.549841,2.685573,1.453969,,,,,,,,,
+5,24,1.723790,1.726626,1.731888,1.740808,1.754716,1.775362,1.804527,1.843895,1.894975,1.958688,2.035820,2.126544,2.230773,2.347518,2.473853,2.603138,2.720640,2.801030,2.805930,2.690745,2.629283,2.579252,2.570780,1.978068
+
+Iterative Refinement - Control Times by Iteration
+Iteration,Control_Points,t_0,t_1,t_2,t_3,t_4,t_5,t_6,t_7,t_8,t_9,t_10,t_11,t_12,t_13,t_14,t_15,t_16,t_17,t_18,t_19,t_20,t_21,t_22,t_23
+1,4,2020.00,2021.00,2380.00,2420.00,,,,,,,,,,,,,,,,,,,,
+2,6,2020.00,2021.00,2027.74,2073.23,2380.00,2420.00,,,,,,,,,,,,,,,,,,
+3,9,2020.00,2021.00,2023.44,2029.42,2044.02,2079.69,2166.89,2380.00,2420.00,,,,,,,,,,,,,,,
+4,15,2020.00,2021.00,2022.56,2024.98,2028.74,2034.60,2043.72,2057.90,2079.96,2114.28,2167.68,2250.75,2380.00,2410.00,2420.00,,,,,,,,,
+5,24,2020.00,2021.00,2022.24,2023.76,2025.65,2027.99,2030.88,2034.45,2038.87,2044.33,2051.07,2059.42,2069.74,2082.49,2098.26,2117.76,2141.86,2171.66,2208.50,2254.06,2310.37,2380.00,2410.00,2420.00
